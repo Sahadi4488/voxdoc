@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Secrets (Groq API key goes here later)
+.env
+
+# Generated audio
+*.wav
+*.mp3
+audio_cache/
+
+# SQLite
+*.db
+
+# Frontend (Week 2)
+node_modules/
+dist/
