@@ -34,7 +34,12 @@ def timings_from_results(results, sample_rate: int = SAMPLE_RATE) -> list[dict]:
             text, ws = tk.text, tk.whitespace or ""
             timed = tk.start_ts is not None and tk.end_ts is not None
             if any(c.isalnum() for c in text):
-                start = offset + tk.start_ts if timed else (words[-1]["end"] if words else offset)
+                if timed:
+                    start = offset + tk.start_ts
+                elif words:  # previous word may itself be untimed (end still None)
+                    start = words[-1]["end"] if words[-1]["end"] is not None else words[-1]["start"]
+                else:
+                    start = offset
                 if words and words[-1]["end"] is None:
                     words[-1]["end"] = start
                 words.append({"word": pending + text, "start": start,

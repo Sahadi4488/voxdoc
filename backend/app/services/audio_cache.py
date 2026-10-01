@@ -77,7 +77,12 @@ def get(key: str, cache_dir: Path | None = None) -> tuple[Path, list[dict]] | No
         sidecar = json.loads(json_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None  # no sidecar (or corrupt) -> incomplete entry
-    if sidecar.get("version") != CACHE_VERSION or not wav_path.exists():
+    if (
+        not isinstance(sidecar, dict)
+        or sidecar.get("version") != CACHE_VERSION
+        or not isinstance(sidecar.get("timings"), list)
+        or not wav_path.exists()
+    ):
         return None
     return wav_path, sidecar["timings"]
 

@@ -1,5 +1,7 @@
 import dataclasses
+import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -7,7 +9,11 @@ from app.services.voices import PRESETS, get_preset, lang_code_for, list_presets
 
 
 def test_no_heavy_imports():
-    assert "kokoro" not in sys.modules and "torch" not in sys.modules
+    # Fresh interpreter: other tests (spaCy in the splitter) import torch into this one
+    code = "import sys, app.services.voices; print('kokoro' in sys.modules or 'torch' in sys.modules)"
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=Path(__file__).resolve().parents[1], check=True).stdout
+    assert out.strip() == "False"
 
 
 def test_seven_presets_json_ready():

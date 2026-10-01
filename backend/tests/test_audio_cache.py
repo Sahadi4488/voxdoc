@@ -39,6 +39,14 @@ def test_put_get_roundtrip_and_missing_sidecar(tmp_path):
     assert audio_cache.get(key, tmp_path) is None
 
 
+@pytest.mark.parametrize("sidecar", ['{"version": "v1"}', "[1, 2]", '{"version": "v0", "timings": []}', "{not json"])
+def test_malformed_sidecar_is_a_miss(tmp_path, sidecar):
+    key = cache_key("Hello.", "af_heart", 1)
+    audio_cache.put(key, np.zeros(10, dtype=np.float32), [], tmp_path)
+    (tmp_path / f"{key}.json").write_text(sidecar, encoding="utf-8")
+    assert audio_cache.get(key, tmp_path) is None
+
+
 def test_rejects_bad_keys(tmp_path):
     with pytest.raises(ValueError):
         audio_cache.get("../../etc/passwd", tmp_path)
@@ -66,6 +74,17 @@ def test_timings_attach_punctuation_and_offset_results():
         {"word": "$5 --", "start": 0.7, "end": 0.8},
         {"word": "v2.0", "start": 0.8, "end": 1.0},
         {"word": "#1.", "start": 1.1, "end": 1.35},
+    ]
+
+
+def test_timings_consecutive_untimed_words():
+    r = SimpleNamespace(audio=np.zeros(24000), tokens=[
+        _tok("Hi", 0.1, 0.2), _tok("v2.0", None, None), _tok("v3.0", None, None, ""),
+    ])
+    assert timings_from_results([r]) == [
+        {"word": "Hi", "start": 0.1, "end": 0.2},
+        {"word": "v2.0", "start": 0.2, "end": 0.2},
+        {"word": "v3.0", "start": 0.2, "end": 1.0},
     ]
 
 
