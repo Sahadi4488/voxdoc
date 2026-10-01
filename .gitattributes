@@ -1,0 +1,6 @@
+# Never line-ending-convert binary fixtures/assets
+*.pdf  binary
+*.docx binary
+*.wav  binary
+*.mp3  binary
+*.png  binary
