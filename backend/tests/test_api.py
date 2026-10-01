@@ -66,7 +66,7 @@ def test_rejected_uploads_leave_nothing(client, tmp_path, name, content, status)
 def test_scanned_pdf_is_422(client, tmp_path):
     r = upload(client, FIXTURES / "scanned.pdf")
     assert r.status_code == 422
-    assert "scanned" in r.json()["detail"]
+    assert "probably a scan" in r.json()["detail"]
     assert client.get("/documents").json() == [] and uploads(tmp_path) == []
 
 

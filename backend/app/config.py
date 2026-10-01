@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     upload_dir: Path | None = None  # default: data_dir/uploads
     audio_cache_dir: Path | None = None  # default: data_dir/audio_cache
     max_upload_mb: int = 20
-    cors_origins: list[str] = ["http://localhost:5173"]  # Vite dev server
+    # Vite dev server; the browser treats localhost and 127.0.0.1 as different origins
+    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     # Load Kokoro at startup instead of on the first /tts request. Off by default:
     # `fastapi dev` reloads on every save and would reload the model each time.
     warm_tts: bool = False

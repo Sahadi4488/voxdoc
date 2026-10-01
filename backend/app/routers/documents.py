@@ -46,7 +46,8 @@ def upload_document(file: UploadFile, conn: sqlite3.Connection = Depends(db.get_
         try:
             sentences = split(extract(stored))
         except NoTextError:
-            raise HTTPException(422, "No extractable text — scanned PDFs aren't supported.") from None
+            raise HTTPException(422, "This PDF has no selectable text, so it's probably a scan. "
+                                     "VoxDoc can't read scans.") from None
         except UnreadableFileError as e:
             raise HTTPException(422, str(e).replace(stored_name, filename)) from None
         if not sentences:
