@@ -12,11 +12,35 @@ export async function uploadDocument(file) {
   return request('/documents', { method: 'POST', body: form }, 'Upload failed')
 }
 
+/** A document with its sentences, by public id. */
+export async function getDocument(docId, signal) {
+  return request(`/documents/${encodeURIComponent(docId)}`, { signal }, 'Could not open the document')
+}
+
+/** Audio + word timings for one sentence. `speed` undefined -> the preset's default. */
+export async function getTts({ docId, idx, voice, speed }) {
+  return request(
+    '/tts',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ doc_id: docId, sentence_idx: idx, voice, speed }),
+    },
+    'Could not prepare the audio',
+  )
+}
+
+/** Absolute URL for an audio path returned by /tts (e.g. "/audio/<key>.wav"). */
+export function audioUrl(path) {
+  return `${API_URL}${path}`
+}
+
 async function request(path, options, failure) {
   let res
   try {
     res = await fetch(`${API_URL}${path}`, options)
-  } catch {
+  } catch (err) {
+    if (err.name === 'AbortError') throw err // cancelled on purpose, not a failure
     // fetch only rejects on network failure (TypeError: Failed to fetch)
     throw new Error(NETWORK_ERROR)
   }
