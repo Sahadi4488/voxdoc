@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 
 class DocumentOut(BaseModel):
-    id: int
+    id: str  # public_id: unguessable, never the internal integer key
     title: str
     filename: str
     sentence_count: int
@@ -16,6 +16,7 @@ class SentenceOut(BaseModel):
     idx: int
     text: str
     page: int | None  # None for DOCX
+    para: int
 
 
 class DocumentDetail(DocumentOut):
@@ -36,7 +37,7 @@ class PresetOut(BaseModel):
 
 
 class TTSRequest(BaseModel):
-    doc_id: int
+    doc_id: str = Field(description="The document's public id")
     sentence_idx: int = Field(ge=0)
     voice: str = Field(description="Preset id from GET /voices, e.g. 'presenter'")
     speed: float | None = Field(None, ge=0.5, le=2.0, description="Defaults to the preset's speed")

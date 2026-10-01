@@ -47,8 +47,8 @@ def test_speed_1_and_1_0_share_audio(client, docx_id, fake_engine):
 
 
 def test_unknown_document_404(client):
-    r = tts(client, 9999)
-    assert r.status_code == 404 and r.json()["detail"] == "Document 9999 not found."
+    r = tts(client, "not-a-real-id")
+    assert r.status_code == 404 and r.json()["detail"] == "Document not found."
 
 
 def test_sentence_out_of_range_404(client, docx_id):

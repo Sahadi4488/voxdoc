@@ -44,31 +44,37 @@ def upload_document(file: UploadFile, conn: sqlite3.Connection = Depends(db.get_
         if size == 0:
             raise HTTPException(400, "The uploaded file is empty.")
         try:
-            sentences = split(extract(stored))
+            pages = extract(stored)
         except NoTextError:
             raise HTTPException(422, "This PDF has no selectable text, so it's probably a scan. "
                                      "VoxDoc can't read scans.") from None
         except UnreadableFileError as e:
             raise HTTPException(422, str(e).replace(stored_name, filename)) from None
+        if len(pages) > settings.max_pages:  # checked before splitting: don't spend the CPU
+            raise HTTPException(413, f"This document has {len(pages)} pages. "
+                                     f"VoxDoc reads up to {settings.max_pages}.")
+        sentences = split(pages)
         if not sentences:
             raise HTTPException(422, "No readable sentences found in this document.")
-        doc_id = db.insert_document(conn, Path(filename).stem or "Untitled", filename, stored_name, sentences)
+        if len(sentences) > settings.max_sentences:
+            raise HTTPException(413, f"This document has {len(sentences)} sentences. "
+                                     f"VoxDoc reads up to {settings.max_sentences}.")
+        public_id = db.insert_document(conn, Path(filename).stem or "Untitled", filename, stored_name, sentences)
     except BaseException:
         stored.unlink(missing_ok=True)  # no orphan files; the DB transaction already rolled back
         raise
-    return db.get_document(conn, doc_id, with_sentences=False)
+    return db.get_document(conn, public_id, with_sentences=False)
 
 
-@router.get("", response_model=list[DocumentOut])
-def list_documents(conn: sqlite3.Connection = Depends(db.get_db)):
-    return db.list_documents(conn)
+# No GET /documents list: on a public server it would show everyone's uploads.
+# A document is reachable only by its unguessable public_id (a private share link).
 
 
-@router.get("/{doc_id}", response_model=DocumentDetail, responses={404: {"model": ErrorOut}})
-def get_document(doc_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
-    doc = db.get_document(conn, doc_id)
+@router.get("/{public_id}", response_model=DocumentDetail, responses={404: {"model": ErrorOut}})
+def get_document(public_id: str, conn: sqlite3.Connection = Depends(db.get_db)):
+    doc = db.get_document(conn, public_id)
     if doc is None:
-        raise HTTPException(404, f"Document {doc_id} not found.")
+        raise HTTPException(404, "Document not found. Check the link, or upload the file again.")
     return doc
 
 

@@ -28,8 +28,8 @@ def tts(req: TTSRequest, conn: sqlite3.Connection = Depends(db.get_db),
     if text is None:
         doc = db.get_document(conn, req.doc_id, with_sentences=False)
         if doc is None:
-            raise HTTPException(404, f"Document {req.doc_id} not found.")
-        raise HTTPException(404, f"Sentence {req.sentence_idx} not found: document {req.doc_id} "
+            raise HTTPException(404, "Document not found.")
+        raise HTTPException(404, f"Sentence {req.sentence_idx} not found: the document "
                                  f"has sentences 0-{doc['sentence_count'] - 1}.")
     try:
         preset = get_preset(req.voice)

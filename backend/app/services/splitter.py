@@ -32,6 +32,7 @@ class Sentence:
     idx: int
     text: str
     page: int | None
+    para: int = 0  # 0-based paragraph number, contiguous; the Reader groups by it
 
 
 @lru_cache(maxsize=1)
@@ -51,16 +52,19 @@ def split(pages: list[Page], max_chars: int = MAX_CHARS) -> list[Sentence]:
     paragraphs = [(m.start(), m.group().replace("\n", " "))  # same length: offsets stay valid
                   for m in re.finditer(r"[^\n]+(?:\n[^\n]+)*", text)]
 
-    spans: list[tuple[int, int]] = []  # absolute (start, end) offsets into `text`
-    for (base, para), doc in zip(paragraphs, _nlp().pipe(p for _, p in paragraphs)):
+    spans: list[tuple[int, int, int]] = []  # absolute (start, end) offsets into `text`, para
+    para = 0
+    for (base, _), doc in zip(paragraphs, _nlp().pipe(p for _, p in paragraphs)):
         sents = [(base + s.start_char, base + s.end_char) for s in doc.sents]
-        for start, end in _fix_paragraph(sents, text):
-            spans.extend(_split_long(start, end, text, max_chars))
+        pieces = [p for start, end in _fix_paragraph(sents, text) for p in _split_long(start, end, text, max_chars)]
+        if pieces:  # paragraphs that were only fragments don't consume a number
+            spans.extend((start, end, para) for start, end in pieces)
+            para += 1
 
     sentences = []
-    for start, end in spans:
+    for start, end, p in spans:
         page = page_numbers[bisect.bisect_right(page_starts, start) - 1]
-        sentences.append(Sentence(len(sentences), _clean(text[start:end]), page))
+        sentences.append(Sentence(len(sentences), _clean(text[start:end]), page, p))
     return sentences
 
 

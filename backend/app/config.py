@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     upload_dir: Path | None = None  # default: data_dir/uploads
     audio_cache_dir: Path | None = None  # default: data_dir/audio_cache
     max_upload_mb: int = 20
+    # Caps so one upload can't occupy the CPU for an hour on a public server
+    max_pages: int = 150
+    max_sentences: int = 3000
     # Vite dev server; the browser treats localhost and 127.0.0.1 as different origins
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     # Load Kokoro at startup instead of on the first /tts request. Off by default:

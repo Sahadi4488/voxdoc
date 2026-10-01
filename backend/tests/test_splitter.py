@@ -92,6 +92,21 @@ def test_paragraphs_are_hard_boundaries():
     assert texts(sents) == ["Results", "The model works"]
 
 
+def test_para_numbers():
+    sents = split([Page(1, "Intro\n\nOne. Two.\n\n...\n\nThree", True), Page(2, "continues here. Four.")])
+    assert [(s.text, s.para) for s in sents] == [
+        ("Intro", 0), ("One.", 1), ("Two.", 1),  # "..." paragraph is dropped without a number
+        ("Three continues here.", 2), ("Four.", 2),  # a paragraph crossing a page break is one paragraph
+    ]
+
+
+def test_pdf_paras_contiguous(pdf_sents):
+    paras = [s.para for s in pdf_sents]
+    assert paras[0] == 0 and all(b - a in (0, 1) for a, b in zip(paras, paras[1:]))
+    heading = next(s for s in pdf_sents if s.text == "1. Introduction")
+    assert sum(s.para == heading.para for s in pdf_sents) == 1  # headings are their own paragraph
+
+
 def test_page_join_rules():
     pages = [Page(1, "It was a state-of-", True), Page(2, "the-art result and a commer-", True),
              Page(3, "cial one, continued", True), Page(4, ""), Page(5, "here. Done.")]
