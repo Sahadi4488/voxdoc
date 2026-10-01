@@ -24,7 +24,8 @@ from app.config import settings
 
 CACHE_VERSION = "v1"  # bump when the audio or timing format changes
 SAMPLE_RATE = 24000
-DEFAULT_CACHE_DIR = settings.audio_cache_dir  # data/audio_cache; VOXDOC_AUDIO_CACHE_DIR overrides
+# Default directory is settings.audio_cache_dir, read at call time (never
+# captured at import) so tests can point it at a temp folder.
 
 _KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -67,7 +68,7 @@ def cache_key(text: str, voice: str | Mapping[str, float], speed: float) -> str:
 def _paths(key: str, cache_dir: Path | None) -> tuple[Path, Path]:
     if not _KEY_RE.match(key):
         raise ValueError(f"Invalid cache key {key!r}.")
-    d = Path(cache_dir) if cache_dir else DEFAULT_CACHE_DIR
+    d = Path(cache_dir) if cache_dir else settings.audio_cache_dir
     return d / f"{key}.wav", d / f"{key}.json"
 
 

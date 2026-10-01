@@ -89,6 +89,11 @@ def list_documents(conn: sqlite3.Connection) -> list[dict]:
     return [dict(r) for r in rows]
 
 
+def get_sentence_text(conn: sqlite3.Connection, doc_id: int, idx: int) -> str | None:
+    row = conn.execute("SELECT text FROM sentences WHERE doc_id = ? AND idx = ?", (doc_id, idx)).fetchone()
+    return row["text"] if row else None
+
+
 def get_document(conn: sqlite3.Connection, doc_id: int, with_sentences: bool = True) -> dict | None:
     row = conn.execute(_DOCUMENT_SELECT + " WHERE d.id = ?", (doc_id,)).fetchone()
     if row is None:

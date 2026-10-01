@@ -1,20 +1,24 @@
-"""VoxDoc API.  Run from backend\\ (or anywhere):  fastapi dev app/main.py"""
+"""VoxDoc API.  Run from backend/ (or anywhere):  fastapi dev app/main.py"""
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
-from app.routers import documents
-from app.services.splitter import warm_up
+from app.routers import documents, tts
+from app.services import splitter
+from app.services.tts_engine import get_tts_engine
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    warm_up()  # load spaCy now so the first upload isn't 3 s slower
+    splitter.warm_up()  # load spaCy now so the first upload isn't 3 s slower
+    if settings.warm_tts:  # off by default: Kokoro takes seconds to load on every dev reload
+        get_tts_engine().warm_up()
     yield
 
 
@@ -41,6 +45,9 @@ async def reject_oversized_bodies(request: Request, call_next):
 
 
 app.include_router(documents.router)
+app.include_router(tts.router)
+# config.py creates this folder: StaticFiles checks it here, at import time
+app.mount("/audio", StaticFiles(directory=settings.audio_cache_dir), name="audio")
 
 
 @app.get("/health", tags=["meta"])

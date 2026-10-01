@@ -5,22 +5,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
-
-FIXTURES = Path(__file__).parent / "fixtures"
-
-
-@pytest.fixture()
-def client(tmp_path, monkeypatch):
-    """Fresh database + upload folder per test; the real data/ is never touched."""
-    monkeypatch.setattr(settings, "db_path", tmp_path / "test.db")
-    monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
-    with TestClient(app) as c:  # `with` runs the lifespan (init_db)
-        yield c
-
-
-def upload(client, path=None, name=None, content=None):
-    data = content if content is not None else Path(path).read_bytes()
-    return client.post("/documents", files={"file": (name or Path(path).name, data)})
+from tests.conftest import FIXTURES, upload
 
 
 def uploads(tmp_path):

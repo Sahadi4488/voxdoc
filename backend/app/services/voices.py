@@ -30,14 +30,14 @@ _PRESET_LIST = [
            "Expressive female voice for long-form reading."),
     Preset("calm", "Calm", "af_nicole", "American", 0.9,
            "Soft, relaxed female voice for easy listening."),
-    Preset("professional", "Professional", "am_michael", "American", 1.0,
+    Preset("presenter", "Presenter", "am_michael", "American", 1.0,
            "Steady male voice for reports and papers."),
     Preset("energetic", "Energetic", "am_fenrir", "American", 1.1,
            "Brighter male voice at a slightly faster pace."),
     Preset("british_female", "British (F)", "bf_emma", "British", 1.0,
            "Clear British female voice."),
-    Preset("british_male", "British (M)", "bm_george", "British", 1.0,
-           "Measured British male voice."),
+    Preset("scholar", "Scholar", "bm_george", "British", 1.0,
+           "Measured British male voice for academic texts."),
 ]
 
 PRESETS: dict[str, Preset] = {p.id: p for p in _PRESET_LIST}

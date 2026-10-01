@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     audio_cache_dir: Path | None = None  # default: data_dir/audio_cache
     max_upload_mb: int = 20
     cors_origins: list[str] = ["http://localhost:5173"]  # Vite dev server
+    # Load Kokoro at startup instead of on the first /tts request. Off by default:
+    # `fastapi dev` reloads on every save and would reload the model each time.
+    warm_tts: bool = False
 
     @model_validator(mode="after")
     def _resolve_paths(self):
@@ -30,6 +33,9 @@ class Settings(BaseSettings):
         self.db_path = _anchor(self.db_path or self.data_dir / "voxdoc.db")
         self.upload_dir = _anchor(self.upload_dir or self.data_dir / "uploads")
         self.audio_cache_dir = _anchor(self.audio_cache_dir or self.data_dir / "audio_cache")
+        # Must exist before app.main is imported: StaticFiles checks its
+        # directory at mount time, before lifespan runs.
+        self.audio_cache_dir.mkdir(parents=True, exist_ok=True)
         return self
 
     @property
