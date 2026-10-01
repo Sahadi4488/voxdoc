@@ -17,6 +17,11 @@ export async function getDocument(docId, signal) {
   return request(`/documents/${encodeURIComponent(docId)}`, { signal }, 'Could not open the document')
 }
 
+/** The voice presets (voices.py is the single source of truth). */
+export async function getVoices() {
+  return request('/voices', {}, 'Could not load the voices')
+}
+
 /** Audio + word timings for one sentence. `speed` undefined -> the preset's default. */
 export async function getTts({ docId, idx, voice, speed }) {
   return request(

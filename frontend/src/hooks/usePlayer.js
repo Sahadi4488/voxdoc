@@ -1,30 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { audioUrl, getTts } from '../api'
+import { isUnlockClip, unlockAudio } from '../lib/audio'
 
 /*
-  Sentence-by-sentence player.
+  Sentence-by-sentence player for one document (ReaderPage is keyed by docId,
+  so a different document means a fresh hook; unmount cleanup stops everything).
 
   status: 'idle' | 'loading' | 'playing' | 'paused' | 'ended' | 'error'
 
-  Every jump (play from idle, next, prev, sentence click, auto-advance) goes
-  through playFrom(idx), which takes a new request token. After each await it
-  checks the token: if a newer jump happened meanwhile, it stops. That is what
-  makes "click next five times" play only the fifth sentence.
+  Every jump (play from idle, next, prev, sentence click, auto-advance, voice
+  change) goes through playFrom(idx), which takes a new request token. After
+  each await it checks the token: if a newer jump happened meanwhile, it stops.
+  That is what makes "click next five times" play only the fifth sentence.
 
   State is what the UI shows; refs are what listeners and async code read
   (they always see the latest value, never a stale closure).
 */
 
-// 10 ms of silence. Played synchronously inside the first click so browsers
-// that only allow play() during the user gesture itself (Safari) unlock the
-// element before we await the network. One element is reused for every clip.
-const SILENCE =
-  'data:audio/wav;base64,UklGRsQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YaAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
-
 const LOAD_ERROR = "Can't load the audio. Check that the VoxDoc server is running, then try again."
+const RESTART_DELAY_MS = 250 // arrowing through voices restarts playback once, not per key press
 
 // Dev-only switch for the README metric: open the app with ?noprefetch
 const PREFETCH = !(import.meta.env.DEV && new URLSearchParams(window.location.search).has('noprefetch'))
+
+const clipKey = (idx, voice, speed) => `${idx}|${voice}|${speed}`
 
 function getCache(ref) {
   if (!ref.current) ref.current = new Map()
@@ -46,12 +45,21 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
   const [error, setError] = useState(null)
 
   const audioRef = useRef(null)
-  const cacheRef = useRef(null) // Map<key, {idx, promise}>: promises, so in-flight clips aren't requested twice
+  // Map<clipKey, {idx, voice, speed, promise}>: promises, so in-flight clips aren't requested twice.
+  // Keyed by voice and speed too, so a clip in the old voice can never play after a change.
+  const cacheRef = useRef(null)
   const tokenRef = useRef(0) // incremented by every jump; stale async work compares and bails
   const idxRef = useRef(0)
   const statusRef = useRef('idle')
-  const loadedIdxRef = useRef(null) // which sentence's clip is in audio.src
-  const unlockedRef = useRef(false)
+  const loadedKeyRef = useRef(null) // clipKey of what's in (or about to be in) audio.src
+  const voiceRef = useRef(voice)
+  const speedRef = useRef(speed)
+
+  // Declared first: later effects in the same commit read the new values
+  useEffect(() => {
+    voiceRef.current = voice
+    speedRef.current = speed
+  }, [voice, speed])
 
   const changeStatus = useCallback((s) => {
     statusRef.current = s
@@ -68,11 +76,13 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
 
   const fetchClip = useCallback(
     (idx) => {
+      const v = voiceRef.current
+      const s = speedRef.current
       const cache = getCache(cacheRef)
-      const key = `${idx}|${voice}|${speed ?? ''}`
+      const key = clipKey(idx, v, s)
       let entry = cache.get(key)
       if (!entry) {
-        entry = { idx, promise: getTts({ docId, idx, voice, speed }) }
+        entry = { idx, voice: v, speed: s, promise: getTts({ docId, idx, voice: v, speed: s }) }
         cache.set(key, entry)
         const mine = entry
         // Never keep a failure: a retry must make a fresh request. (Also marks
@@ -83,27 +93,27 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       }
       return entry.promise
     },
-    [docId, voice, speed],
+    [docId],
   )
 
   const playFrom = useCallback(
     async (idx) => {
-      if (!docId || idx < 0 || idx >= sentenceCount) return
+      if (!docId || !voiceRef.current || idx < 0 || idx >= sentenceCount) return
       const token = ++tokenRef.current
       const audio = getAudio(audioRef)
-      if (!unlockedRef.current) {
-        unlockedRef.current = true
-        audio.src = SILENCE
-        audio.play().catch(() => {}) // interrupted by the pause() below: expected
-      }
+      unlockAudio(audio) // first call only; must happen before any await
       audio.pause() // a jump silences the old clip at once: no overlap
       idxRef.current = idx
       setCurrentIdx(idx)
       setError(null)
       changeStatus('loading')
+      const v = voiceRef.current
+      const s = speedRef.current
+      loadedKeyRef.current = clipKey(idx, v, s)
       const cache = getCache(cacheRef)
       for (const [key, entry] of cache) {
-        if (entry.idx < idx - 1) cache.delete(key) // keep at most one sentence behind
+        // keep at most one sentence behind, and nothing in another voice/speed
+        if (entry.idx < idx - 1 || entry.voice !== v || entry.speed !== s) cache.delete(key)
       }
 
       let data
@@ -116,7 +126,6 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       if (token !== tokenRef.current) return // a newer jump won
 
       setClip(data)
-      loadedIdxRef.current = idx
       audio.src = audioUrl(data.audio_url)
       try {
         await audio.play()
@@ -141,7 +150,9 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
 
   const resume = useCallback(async () => {
     const audio = audioRef.current
-    if (!audio || loadedIdxRef.current !== idxRef.current) return playFrom(idxRef.current)
+    const current = clipKey(idxRef.current, voiceRef.current, speedRef.current)
+    // Voice/speed changed while paused: the loaded clip is stale, fetch the new one
+    if (!audio || loadedKeyRef.current !== current) return playFrom(idxRef.current)
     const token = tokenRef.current // not a jump: same clip, same position
     changeStatus('playing')
     try {
@@ -168,13 +179,25 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
   const next = useCallback(() => playFrom(idxRef.current + 1), [playFrom])
   const prev = useCallback(() => playFrom(idxRef.current - 1), [playFrom])
 
+  // Voice or speed changed while playing: restart the current sentence in the
+  // new voice. An effect, not the picker's handler: only here do the new values
+  // exist. Harmless on mount and under StrictMode (nothing is playing then).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      const playingNow = statusRef.current === 'playing' || statusRef.current === 'loading'
+      const stale = loadedKeyRef.current !== clipKey(idxRef.current, voice, speed)
+      if (playingNow && stale) playFrom(idxRef.current)
+    }, RESTART_DELAY_MS)
+    return () => clearTimeout(t)
+  }, [voice, speed, playFrom])
+
   // Audio element events. Re-registered when playFrom changes, always with cleanup,
   // so a listener is never attached twice (StrictMode would otherwise expose it).
   useEffect(() => {
     const audio = getAudio(audioRef)
     let endedAt = null
     const onEnded = () => {
-      if (audio.src.startsWith('data:')) return // the unlock clip
+      if (isUnlockClip(audio)) return
       if (import.meta.env.DEV) endedAt = performance.now()
       const nextIdx = idxRef.current + 1 // ref, not state: this listener may be from an older render
       if (nextIdx < sentenceCount) playFrom(nextIdx)
@@ -188,7 +211,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
     }
     const onError = () => {
       // Network failure mid-clip (e.g. the server stopped). Ignore the unlock clip and cleared src.
-      if (!audio.getAttribute('src') || audio.src.startsWith('data:')) return
+      if (!audio.getAttribute('src') || isUnlockClip(audio)) return
       if (statusRef.current === 'playing' || statusRef.current === 'paused') fail(LOAD_ERROR)
     }
     audio.addEventListener('ended', onEnded)
@@ -201,25 +224,11 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
     }
   }, [playFrom, sentenceCount, changeStatus, fail])
 
-  // New document: reset what the UI shows during render ("adjusting state when
-  // a prop changes"), so no frame shows the old document's player state.
-  const [shownDocId, setShownDocId] = useState(docId)
-  if (docId !== shownDocId) {
-    setShownDocId(docId)
-    setStatus('idle')
-    setCurrentIdx(0)
-    setClip(null)
-    setError(null)
-  }
-
-  // ...and in the effect: stop, forget everything, invalidate in-flight work,
-  // so the old document's audio can never play.
+  // Unmount (another document opened, or back to upload): stop, forget
+  // everything, invalidate in-flight work, so this document's audio can never play.
   useEffect(() => {
     const audio = getAudio(audioRef)
     const cache = getCache(cacheRef)
-    statusRef.current = 'idle'
-    idxRef.current = 0
-    loadedIdxRef.current = null
     return () => {
       // Deliberately the *current* value: this must invalidate the latest jump.
       // (The rule's advice is for DOM refs; this is a counter.)
@@ -230,15 +239,15 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       audio.load()
       cache.clear()
     }
-  }, [docId])
+  }, [])
 
-  // Warm the clip for the current sentence as soon as a document opens:
-  // the first press of play then starts almost instantly.
+  // Warm the clip for the current sentence as soon as a document opens (and
+  // after a voice change while idle): the first press of play is then instant.
   useEffect(() => {
-    if (PREFETCH && docId && sentenceCount > 0 && statusRef.current === 'idle') {
+    if (PREFETCH && docId && voice && sentenceCount > 0 && statusRef.current === 'idle') {
       fetchClip(idxRef.current)
     }
-  }, [docId, sentenceCount, fetchClip])
+  }, [docId, sentenceCount, voice, speed, fetchClip])
 
   return { status, currentIdx, clip, error, play, pause, toggle, next, prev, playFrom }
 }

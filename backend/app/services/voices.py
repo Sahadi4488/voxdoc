@@ -17,28 +17,32 @@ _LANG_CODES = {"a": "a", "b": "b"}
 class Preset:
     id: str
     name: str
-    voice: str
-    accent: str
+    voice: str  # Kokoro voice id; never sent by the frontend, which only knows preset ids
+    accent: str  # "US" | "UK"
+    gender: str  # "female" | "male"
     default_speed: float
+    use: str  # what it suits, shown in the voice picker
     description: str
 
 
 _PRESET_LIST = [
-    Preset("narrator", "Narrator", "af_heart", "American", 1.0,
-           "Warm, clear female voice. The default for most documents."),
-    Preset("storyteller", "Storyteller", "af_bella", "American", 0.95,
-           "Expressive female voice for long-form reading."),
-    Preset("calm", "Calm", "af_nicole", "American", 0.9,
-           "Soft, relaxed female voice for easy listening."),
-    Preset("presenter", "Presenter", "am_michael", "American", 1.0,
-           "Steady male voice for reports and papers."),
-    Preset("energetic", "Energetic", "am_fenrir", "American", 1.1,
-           "Brighter male voice at a slightly faster pace."),
-    Preset("british_female", "British (F)", "bf_emma", "British", 1.0,
-           "Clear British female voice."),
-    Preset("scholar", "Scholar", "bm_george", "British", 1.0,
-           "Measured British male voice for academic texts."),
+    Preset("narrator", "Narrator", "af_heart", "US", "female", 1.0, "Everyday reading",
+           "Warm, clear voice. The default for most documents."),
+    Preset("storyteller", "Storyteller", "af_bella", "US", "female", 0.95, "Novels and stories",
+           "Expressive voice for long-form reading."),
+    Preset("calm", "Calm", "af_nicole", "US", "female", 0.85, "Dense or technical text",
+           "Soft, relaxed voice at an unhurried pace."),
+    Preset("presenter", "Presenter", "am_michael", "US", "male", 1.0, "Reports and articles",
+           "Steady, neutral voice."),
+    Preset("energetic", "Energetic", "am_fenrir", "US", "male", 1.1, "Skimming at speed",
+           "Brighter voice at a slightly faster pace."),
+    Preset("british_female", "Emma", "bf_emma", "UK", "female", 1.0, "Fiction and essays",
+           "Clear British voice."),
+    Preset("scholar", "Scholar", "bm_george", "UK", "male", 1.0, "Academic papers",
+           "Measured British voice."),
 ]
+
+DEFAULT_PRESET_ID = "presenter"
 
 PRESETS: dict[str, Preset] = {p.id: p for p in _PRESET_LIST}
 
@@ -75,5 +79,5 @@ def validate_speed(speed: float) -> float:
 
 
 def list_presets() -> list[dict]:
-    """JSON-ready presets for GET /voices."""
-    return [asdict(p) for p in PRESETS.values()]
+    """JSON-ready presets for GET /voices; is_default marks the fallback preset."""
+    return [{**asdict(p), "is_default": p.id == DEFAULT_PRESET_ID} for p in PRESETS.values()]

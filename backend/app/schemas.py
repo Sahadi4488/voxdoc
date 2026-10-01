@@ -32,8 +32,11 @@ class PresetOut(BaseModel):
     name: str
     voice: str
     accent: str
+    gender: str
     default_speed: float
+    use: str
     description: str
+    is_default: bool
 
 
 class TTSRequest(BaseModel):

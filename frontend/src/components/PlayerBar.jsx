@@ -15,7 +15,7 @@ const ICONS = {
 const focusRing = 'outline-offset-2 outline-pen focus-visible:outline-2'
 const quietButton = `rounded-md p-2 text-ink hover:text-pen disabled:cursor-not-allowed disabled:opacity-40 ${focusRing}`
 
-export default function PlayerBar({ ref, player, sentenceCount, voiceLabel }) {
+export default function PlayerBar({ ref, player, sentenceCount, voicePicker, notice }) {
   const { status, currentIdx, error } = player
   const playing = status === 'playing'
   const loading = status === 'loading'
@@ -47,7 +47,7 @@ export default function PlayerBar({ ref, player, sentenceCount, voiceLabel }) {
             type="button"
             aria-label={playing ? 'Pause' : 'Play'}
             onClick={player.toggle}
-            disabled={loading}
+            disabled={loading || !player.ready}
             className={`rounded-full bg-pen p-3 text-paper hover:bg-ink disabled:cursor-wait disabled:opacity-60 ${focusRing}`}
           >
             <Icon d={playing ? ICONS.pause : ICONS.play} />
@@ -66,7 +66,7 @@ export default function PlayerBar({ ref, player, sentenceCount, voiceLabel }) {
         <p className="text-sm text-graphite">
           Sentence {currentIdx + 1} of {sentenceCount}
         </p>
-        <p className="ml-auto text-sm text-graphite">{voiceLabel}</p>
+        <div className="ml-auto">{voicePicker}</div>
 
         {/* Not display:none when empty: live regions must exist before their content changes */}
         <div aria-live="polite" className="basis-full text-sm">
@@ -83,6 +83,8 @@ export default function PlayerBar({ ref, player, sentenceCount, voiceLabel }) {
             </span>
           ) : loading && slow ? (
             <span className="text-graphite">Preparing audio…</span>
+          ) : notice ? (
+            <span className="text-error">{notice}</span>
           ) : null}
         </div>
       </div>

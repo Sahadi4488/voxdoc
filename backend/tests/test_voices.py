@@ -53,3 +53,10 @@ def test_validate_speed_ok(speed):
 def test_validate_speed_rejects(speed):
     with pytest.raises(ValueError):
         validate_speed(speed)
+
+
+def test_presets_have_picker_fields():
+    for p in list_presets():
+        assert p["accent"] in {"US", "UK"} and p["gender"] in {"female", "male"} and p["use"]
+        assert lang_code_for(p["voice"]) == {"US": "a", "UK": "b"}[p["accent"]]  # accent matches the voice
+    assert get_preset("calm").default_speed == 0.85

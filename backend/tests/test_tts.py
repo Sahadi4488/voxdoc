@@ -15,6 +15,7 @@ def test_voices_lists_seven_presets(client):
     presets = client.get("/voices").json()
     assert len(presets) == 7
     assert {"presenter", "scholar"} <= {p["id"] for p in presets}
+    assert [p["id"] for p in presets if p["is_default"]] == ["presenter"]
 
 
 def test_tts_generates_then_hits_cache(client, docx_id, fake_engine, isolated_data):
@@ -34,9 +35,9 @@ def test_tts_generates_then_hits_cache(client, docx_id, fake_engine, isolated_da
 
 
 def test_tts_uses_kokoro_voice_and_preset_default_speed(client, docx_id, fake_engine):
-    tts(client, docx_id, voice="calm")  # af_nicole, default speed 0.9
+    tts(client, docx_id, voice="calm")  # af_nicole, default speed 0.85
     tts(client, docx_id, voice="scholar", speed=1.2)
-    assert [(v, s) for _, v, s in fake_engine.calls] == [("af_nicole", 0.9), ("bm_george", 1.2)]
+    assert [(v, s) for _, v, s in fake_engine.calls] == [("af_nicole", 0.85), ("bm_george", 1.2)]
     assert fake_engine.calls[0][0] == "VoxDoc Test Document"  # sentence 0 of the DOCX
 
 
