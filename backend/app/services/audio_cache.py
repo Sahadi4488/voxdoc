@@ -20,11 +20,11 @@ from pathlib import Path
 
 import soundfile as sf
 
+from app.config import settings
+
 CACHE_VERSION = "v1"  # bump when the audio or timing format changes
 SAMPLE_RATE = 24000
-DEFAULT_CACHE_DIR = Path(
-    os.environ.get("VOXDOC_AUDIO_CACHE", Path(__file__).resolve().parents[2] / "audio_cache")
-)
+DEFAULT_CACHE_DIR = settings.audio_cache_dir  # data/audio_cache; VOXDOC_AUDIO_CACHE_DIR overrides
 
 _KEY_RE = re.compile(r"^[0-9a-f]{64}$")
 

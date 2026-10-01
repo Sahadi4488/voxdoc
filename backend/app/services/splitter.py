@@ -41,6 +41,11 @@ def _nlp():
     return spacy.load("en_core_web_sm", exclude=["ner", "lemmatizer"])
 
 
+def warm_up() -> None:
+    """Load the spaCy model ahead of the first request."""
+    _nlp()
+
+
 def split(pages: list[Page], max_chars: int = MAX_CHARS) -> list[Sentence]:
     text, page_starts, page_numbers = _join_pages(pages)
     paragraphs = [(m.start(), m.group().replace("\n", " "))  # same length: offsets stay valid

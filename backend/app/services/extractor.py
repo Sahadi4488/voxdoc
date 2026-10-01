@@ -16,12 +16,16 @@ noise, and python-docx keeps them out of Document.paragraphs anyway.
 import re
 import statistics
 import unicodedata
+import zipfile
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
 import pdfplumber
 from docx import Document
+from docx.opc.exceptions import PackageNotFoundError
+from pdfminer.pdfparser import PDFSyntaxError
+from pdfplumber.utils.exceptions import PdfminerException
 
 X_TOLERANCE = 1.5  # lower if words glue together, raise if they split apart
 HEADING_MAX_CHARS = 60
@@ -39,6 +43,14 @@ class NoTextError(ValueError):
     """The document has no extractable text (e.g. a scanned PDF; OCR is out of scope)."""
 
 
+class UnreadableFileError(ValueError):
+    """The file is corrupt or isn't really a PDF/DOCX (whatever its extension says)."""
+
+
+# What the parsing libraries raise for corrupt or mislabelled files
+_READ_ERRORS = (PdfminerException, PDFSyntaxError, zipfile.BadZipFile, PackageNotFoundError, KeyError)
+
+
 @dataclass(frozen=True)
 class Page:
     number: int | None  # 1-based PDF page number; None for DOCX
@@ -49,12 +61,13 @@ class Page:
 def extract(path: str | Path) -> list[Page]:
     path = Path(path)
     suffix = path.suffix.lower()
-    if suffix == ".pdf":
-        pages = _extract_pdf(path)
-    elif suffix == ".docx":
-        pages = _extract_docx(path)
-    else:
+    readers = {".pdf": _extract_pdf, ".docx": _extract_docx}
+    if suffix not in readers:
         raise ValueError(f"Unsupported file type {suffix or '(none)'!r}: only .pdf and .docx are supported.")
+    try:
+        pages = readers[suffix](path)
+    except _READ_ERRORS as e:
+        raise UnreadableFileError(f"Could not read {path.name}: the file is corrupt or not a real {suffix} file.") from e
     if not any(p.text for p in pages):
         raise NoTextError(f"No text found in {path.name}. Scanned documents (images only) are not supported.")
     return pages

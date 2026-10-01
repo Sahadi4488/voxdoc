@@ -1,0 +1,88 @@
+"""Document upload and library endpoints.
+
+Routes are plain `def`: extraction and spaCy are blocking CPU work, so FastAPI
+runs them in its threadpool instead of freezing the event loop.
+"""
+import re
+import sqlite3
+import uuid
+from pathlib import Path
+from typing import BinaryIO
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
+
+from app import db
+from app.config import settings
+from app.schemas import DocumentDetail, DocumentOut, ErrorOut
+from app.services.extractor import NoTextError, UnreadableFileError, extract
+from app.services.splitter import split
+
+router = APIRouter(prefix="/documents", tags=["documents"])
+
+ALLOWED_SUFFIXES = {".pdf", ".docx"}
+CHUNK = 1024 * 1024
+
+
+@router.post(
+    "",  # not "/": with the prefix that would be /documents/ and POST /documents would 307
+    status_code=201,
+    response_model=DocumentOut,
+    responses={code: {"model": ErrorOut} for code in (400, 413, 415, 422)},
+)
+def upload_document(file: UploadFile, conn: sqlite3.Connection = Depends(db.get_db)):
+    filename = _basename(file.filename)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in ALLOWED_SUFFIXES:
+        raise HTTPException(415, f"Unsupported file type {suffix or '(none)'}. Upload a .pdf or .docx file.")
+
+    # Never use the client's filename as a path (../../ traversal); it's display-only.
+    stored_name = f"{uuid.uuid4().hex}{suffix}"
+    stored = settings.upload_dir / stored_name
+    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        size = _save_limited(file.file, stored, settings.max_upload_bytes)
+        if size == 0:
+            raise HTTPException(400, "The uploaded file is empty.")
+        try:
+            sentences = split(extract(stored))
+        except NoTextError:
+            raise HTTPException(422, "No extractable text — scanned PDFs aren't supported.") from None
+        except UnreadableFileError as e:
+            raise HTTPException(422, str(e).replace(stored_name, filename)) from None
+        if not sentences:
+            raise HTTPException(422, "No readable sentences found in this document.")
+        doc_id = db.insert_document(conn, Path(filename).stem or "Untitled", filename, stored_name, sentences)
+    except BaseException:
+        stored.unlink(missing_ok=True)  # no orphan files; the DB transaction already rolled back
+        raise
+    return db.get_document(conn, doc_id, with_sentences=False)
+
+
+@router.get("", response_model=list[DocumentOut])
+def list_documents(conn: sqlite3.Connection = Depends(db.get_db)):
+    return db.list_documents(conn)
+
+
+@router.get("/{doc_id}", response_model=DocumentDetail, responses={404: {"model": ErrorOut}})
+def get_document(doc_id: int, conn: sqlite3.Connection = Depends(db.get_db)):
+    doc = db.get_document(conn, doc_id)
+    if doc is None:
+        raise HTTPException(404, f"Document {doc_id} not found.")
+    return doc
+
+
+def _basename(name: str | None) -> str:
+    """Client filename without any directory part (browsers may send C:\\fakepath\\x.pdf)."""
+    return re.split(r"[\\/]", name or "")[-1].strip()
+
+
+def _save_limited(src: BinaryIO, dest: Path, max_bytes: int) -> int:
+    """Copy in chunks, stopping with 413 as soon as the size limit is passed."""
+    size = 0
+    with dest.open("wb") as out:
+        while chunk := src.read(CHUNK):
+            size += len(chunk)
+            if size > max_bytes:
+                raise HTTPException(413, f"File too large: the limit is {max_bytes // (1024 * 1024)} MB.")
+            out.write(chunk)
+    return size

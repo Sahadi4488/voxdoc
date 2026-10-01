@@ -15,8 +15,11 @@ audio_cache/
 backend/scratch/out/
 .pytest_cache/
 
-# SQLite
+# App data: SQLite database, uploaded files, audio cache
+backend/data/
 *.db
+*.db-wal
+*.db-shm
 
 # Frontend (Week 2)
 node_modules/
