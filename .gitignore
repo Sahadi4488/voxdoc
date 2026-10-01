@@ -11,6 +11,10 @@ __pycache__/
 *.mp3
 audio_cache/
 
+# Scratch outputs (generated audio, downloaded test papers)
+backend/scratch/out/
+.pytest_cache/
+
 # SQLite
 *.db
 
