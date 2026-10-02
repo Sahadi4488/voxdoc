@@ -15,6 +15,7 @@ from app.services import audio_cache
 from app.services.audio_cache import SAMPLE_RATE, cache_key, normalize_text
 from app.services.timings import align, timings_from_results
 from app.services.voices import lang_code_for
+from app.utils.locks import KeyedLock
 
 REPO_ID = "hexgrad/Kokoro-82M"
 
@@ -35,10 +36,9 @@ class TTSEngine:
         self._model = None
         self._pipelines: dict = {}
         self._load_lock = threading.Lock()
-        # Re-entrant: get_or_create_audio holds it around check + synthesize + put.
         # One synthesis saturates the CPU; running two in parallel gains nothing
         # and risks thread-safety bugs in the G2P layer.
-        self.lock = threading.RLock()
+        self._synth_lock = threading.Lock()
 
     def pipeline(self, lang_code: str):
         with self._load_lock:
@@ -57,8 +57,8 @@ class TTSEngine:
         """-> (float32 audio at 24 kHz, word timings offset across Kokoro's chunks and
         aligned to character offsets in `text`, which is what the frontend displays)."""
         pipe = self.pipeline(lang_code_for(kokoro_voice))
-        with self.lock:
-            results = [r for r in pipe(normalize_text(text), voice=kokoro_voice, speed=speed) if r.audio is not None]
+        with self._synth_lock:
+            results =[r for r in pipe(normalize_text(text), voice=kokoro_voice, speed=speed) if r.audio is not None]
         if not results:
             raise SynthesisError(f"No audio produced for {text!r}.")
         audio = np.concatenate([r.audio.cpu().numpy() for r in results]).astype(np.float32)
@@ -80,21 +80,25 @@ class AudioResult:
     cached: bool
 
 
+_audio_locks = KeyedLock()
+
+
 def get_or_create_audio(engine, text: str, kokoro_voice: str, speed: float) -> AudioResult:
-    """Cache hit -> return at once. Miss -> lock, re-check, synthesize, store.
+    """Cache hit -> return at once. Miss -> lock this cache key, re-check, synthesize, store.
 
     The re-check under the lock (double-checked locking) means two concurrent
     requests for the same sentence (play + prefetch) synthesize it only once.
+    A miss for another sentence doesn't wait on this lock (only on the engine
+    itself, inside synthesize).
     """
     key = cache_key(text, kokoro_voice, speed)
-    if hit := _cached(key):
-        return hit
-    with engine.lock:
-        if hit := _cached(key):
-            return hit
+
+    def create() -> AudioResult:
         audio, timings = engine.synthesize(text, kokoro_voice, speed)
         wav_path = audio_cache.put(key, audio, timings)
-    return AudioResult(key, wav_path, timings, len(audio) / SAMPLE_RATE, cached=False)
+        return AudioResult(key, wav_path, timings, len(audio) / SAMPLE_RATE, cached=False)
+
+    return _audio_locks.get_or_create(key, lambda: _cached(key), create)
 
 
 def _cached(key: str) -> AudioResult | None:

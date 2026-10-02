@@ -1,4 +1,5 @@
 """VoxDoc API.  Run from backend/ (or anywhere):  fastapi dev app/main.py"""
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -8,10 +9,21 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
-from app.routers import documents, tts
+from app.routers import documents, summaries, tts
 from app.services import splitter
 from app.services.embeddings import get_embedder
+from app.services.llm import LLMBusy, LLMError
 from app.services.tts_engine import get_tts_engine
+
+# uvicorn configures only its own loggers: without a handler here, the app's
+# INFO lines (Groq token usage per call) would be dropped.
+_app_log = logging.getLogger("app")
+if not _app_log.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+    _app_log.addHandler(_handler)
+    _app_log.setLevel(logging.INFO)
+log = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -32,6 +44,7 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Retry-After"],  # cross-origin JS can't read it otherwise (the dev server)
 )
 
 MULTIPART_OVERHEAD = 64 * 1024
@@ -47,7 +60,16 @@ async def reject_oversized_bodies(request: Request, call_next):
     return await call_next(request)
 
 
+@app.exception_handler(LLMError)
+async def llm_error(request: Request, exc: LLMError):
+    """The reason (str(exc), may quote Groq) goes to the log; the user gets public_message."""
+    log.warning("%s on %s: %s", type(exc).__name__, request.url.path, exc)
+    headers = {"Retry-After": str(exc.retry_after)} if isinstance(exc, LLMBusy) else None
+    return JSONResponse({"detail": exc.public_message}, exc.status_code, headers=headers)
+
+
 app.include_router(documents.router)
+app.include_router(summaries.router)
 app.include_router(tts.router)
 # config.py creates this folder: StaticFiles checks it here, at import time
 app.mount("/audio", StaticFiles(directory=settings.audio_cache_dir), name="audio")

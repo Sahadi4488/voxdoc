@@ -8,6 +8,7 @@ Documents have an internal integer id (joins, foreign keys) and an unguessable
 public_id. Only public_id ever leaves this module: sequential ids in URLs
 would let any visitor read everyone's documents by counting (IDOR).
 """
+import json
 import secrets
 import sqlite3
 from collections.abc import Iterator
@@ -16,7 +17,7 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.services.splitter import Sentence
 
-SCHEMA_VERSION = 3  # 2: public_id, sentences.para; 3: chunks
+SCHEMA_VERSION = 4  # 2: public_id, sentences.para; 3: chunks; 4: summaries
 
 CHUNKS_SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks (
@@ -32,8 +33,20 @@ CREATE TABLE IF NOT EXISTS chunks (
 );
 """
 
+SUMMARIES_SCHEMA = """
+CREATE TABLE IF NOT EXISTS summaries (
+    doc_id     INTEGER PRIMARY KEY,     -- one summary per document, generated once
+    overview   TEXT NOT NULL,
+    key_points TEXT NOT NULL,           -- JSON array of strings
+    source     TEXT NOT NULL,           -- 'full' text, or 'excerpts' of a long document
+    model      TEXT NOT NULL,
+    created_at TEXT NOT NULL,           -- ISO-8601 UTC
+    FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+"""
+
 # from_version -> SQL that brings a database to from_version + 1
-MIGRATIONS = {2: CHUNKS_SCHEMA}
+MIGRATIONS = {2: CHUNKS_SCHEMA, 3: SUMMARIES_SCHEMA}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -54,7 +67,7 @@ CREATE TABLE IF NOT EXISTS sentences (
     PRIMARY KEY (doc_id, idx),
     FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
 );
-""" + CHUNKS_SCHEMA
+""" + CHUNKS_SCHEMA + SUMMARIES_SCHEMA
 
 _DOCUMENT_SELECT = """
 SELECT d.id AS _pk, d.public_id AS id, d.title, d.filename, d.created_at,
@@ -179,3 +192,24 @@ def get_chunks(conn: sqlite3.Connection, doc_pk: int, model: str) -> list[sqlite
         "SELECT idx, text, start_idx, end_idx, embedding FROM chunks WHERE doc_id = ? AND model = ? ORDER BY idx",
         (doc_pk, model),
     ).fetchall()
+
+
+# --------------------------------------------------------------------------- summaries (Day 12)
+
+def get_summary(conn: sqlite3.Connection, doc_pk: int) -> dict | None:
+    row = conn.execute("SELECT overview, key_points, source, model, created_at FROM summaries WHERE doc_id = ?",
+                       (doc_pk,)).fetchone()
+    return {**dict(row), "key_points": json.loads(row["key_points"])} if row else None
+
+
+def save_summary(conn: sqlite3.Connection, doc_pk: int, overview: str, key_points: list[str],
+                 source: str, model: str) -> dict:
+    summary = {"overview": overview, "key_points": key_points, "source": source, "model": model,
+               "created_at": datetime.now(timezone.utc).isoformat()}
+    with conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO summaries (doc_id, overview, key_points, source, model, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            (doc_pk, overview, json.dumps(key_points), source, model, summary["created_at"]),
+        )
+    return summary

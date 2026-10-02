@@ -35,6 +35,15 @@ export async function getTts({ docId, idx, voice, speed }) {
   )
 }
 
+/** The document's summary: generated on the first call (a few seconds), cached after that. */
+export async function summarizeDocument(docId, signal) {
+  return request(
+    `/documents/${encodeURIComponent(docId)}/summary`,
+    { method: 'POST', signal },
+    'Could not summarize the document',
+  )
+}
+
 /** Absolute URL for an audio path returned by /tts (e.g. "/audio/<key>.wav"). */
 export function audioUrl(path) {
   return `${API_URL}${path}`
@@ -49,7 +58,15 @@ async function request(path, options, failure) {
     // fetch only rejects on network failure (TypeError: Failed to fetch)
     throw new Error(NETWORK_ERROR)
   }
-  if (!res.ok) throw new Error(await errorMessage(res, failure))
+  if (!res.ok) {
+    const err = new Error(await errorMessage(res, failure))
+    err.status = res.status
+    // Seconds to wait after a 429. Cross-origin (the dev server) JS can read it
+    // only because the backend lists it in CORS expose_headers.
+    const retryAfter = Number.parseInt(res.headers.get('Retry-After'), 10)
+    if (retryAfter > 0) err.retryAfter = retryAfter
+    throw err
+  }
   return res.json()
 }
 

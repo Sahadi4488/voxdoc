@@ -1,19 +1,24 @@
+import json
 import re
-import threading
 import time
 import zlib
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.config import settings
 from app.main import app
 from app.services.embeddings import get_embedder
+from app.services.llm import LLMClient, get_llm_client
 from app.services.tts_engine import get_tts_engine
 
 FIXTURES = Path(__file__).parent / "fixtures"
+# Read before any fixture blanks it: only the live `groq` tests may use the real key
+REAL_GROQ_KEY = settings.groq_api_key
 
 
 @pytest.fixture(autouse=True)
@@ -25,14 +30,17 @@ def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "audio_cache_dir", tmp_path / "audio_cache")
     monkeypatch.setattr(settings, "warm_tts", False)
     monkeypatch.setattr(settings, "warm_embedder", False)
-    return tmp_path
+    # A key in backend/.env must never reach the tests: no test spends real quota by accident
+    monkeypatch.setattr(settings, "groq_api_key", None)
+    get_llm_client.cache_clear()
+    yield tmp_path
+    get_llm_client.cache_clear()
 
 
 class FakeEngine:
     """Stands in for Kokoro: 1 s of silence + two word timings. Records every call."""
 
     def __init__(self, delay: float = 0.0):
-        self.lock = threading.RLock()
         self.calls: list[tuple[str, str, float]] = []
         self.delay = delay
 
@@ -84,10 +92,49 @@ def fake_embedder():
     return FakeEmbedder()
 
 
+SUMMARY = {"overview": "A short test document about reading aloud.",
+           "key_points": ["VoxDoc reads documents aloud.", "It highlights each word."]}
+
+
+class FakeGroq:
+    """Stands in for groq.Groq. Answers from a script, one reply per request; the
+    last reply repeats. A reply is a dict (sent as JSON), a raw string, a
+    (content, finish_reason) tuple, or an exception to raise. Records requests."""
+
+    def __init__(self, *replies, delay: float = 0.0):
+        self.replies = list(replies) or [SUMMARY]
+        self.delay = delay
+        self.requests: list[dict] = []
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        self.requests.append(kwargs)
+        time.sleep(self.delay)
+        reply = self.replies.pop(0) if len(self.replies) > 1 else self.replies[0]
+        if isinstance(reply, Exception):
+            raise reply
+        content, finish_reason = reply if isinstance(reply, tuple) else (reply, "stop")
+        if isinstance(content, dict):
+            content = json.dumps(content)
+        prompt = kwargs["messages"][0]["content"]
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=content), finish_reason=finish_reason)],
+            usage=SimpleNamespace(prompt_tokens=len(prompt) // 4, completion_tokens=100,
+                                  completion_tokens_details=SimpleNamespace(reasoning_tokens=40)),
+        )
+
+
 @pytest.fixture()
-def client(fake_engine, fake_embedder):
+def fake_groq():
+    return FakeGroq()
+
+
+@pytest.fixture()
+def client(fake_engine, fake_embedder, fake_groq):
     app.dependency_overrides[get_tts_engine] = lambda: fake_engine
     app.dependency_overrides[get_embedder] = lambda: fake_embedder
+    llm = LLMClient(SecretStr("test-key"), client=fake_groq)
+    app.dependency_overrides[get_llm_client] = lambda: llm
     try:
         with TestClient(app) as c:  # `with` runs the lifespan (init_db)
             yield c

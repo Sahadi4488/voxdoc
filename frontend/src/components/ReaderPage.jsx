@@ -5,6 +5,7 @@ import { useVoicePrefs } from '../hooks/useVoicePrefs'
 import { useVoices } from '../hooks/useVoices'
 import PlayerBar from './PlayerBar'
 import Reader from './Reader'
+import SummaryPanel from './SummaryPanel'
 import VoicePicker from './VoicePicker'
 
 /**
@@ -71,6 +72,7 @@ export default function ReaderPage({ docId }) {
         wordEnd={player.wordEnd}
         onSentenceClick={player.playFrom}
         bottomInset={bottomInset}
+        header={<SummaryPanel docId={doc.id} />}
       />
       <PlayerBar
         ref={barRef}

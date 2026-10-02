@@ -1,5 +1,6 @@
 """API response models."""
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -60,4 +61,14 @@ class TTSResponse(BaseModel):
     audio_url: str
     timings: list[WordTiming]
     duration: float
+    cached: bool
+
+
+class SummaryOut(BaseModel):
+    overview: str
+    key_points: list[str]
+    # "excerpts": a long document, summarised from selected passages (the UI says so)
+    source: Literal["full", "excerpts"]
+    model: str
+    created_at: datetime
     cached: bool

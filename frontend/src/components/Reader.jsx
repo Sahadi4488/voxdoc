@@ -48,8 +48,18 @@ const Sentence = memo(function Sentence({ ref, idx, text, isActive, wordSync, wo
  * highlighter; clicking a sentence calls onSentenceClick(idx), which must be
  * stable (useCallback) for the memoised sentences to skip re-rendering.
  * `bottomInset()` returns the height covered by the fixed player bar.
+ * `header` is shown under the title (the summary button and panel).
  */
-export default function Reader({ doc, activeIdx, wordSync, wordStart, wordEnd, onSentenceClick, bottomInset = () => 0 }) {
+export default function Reader({
+  doc,
+  activeIdx,
+  wordSync,
+  wordStart,
+  wordEnd,
+  onSentenceClick,
+  bottomInset = () => 0,
+  header = null,
+}) {
   const paragraphs = useMemo(() => {
     const groups = []
     for (const s of doc.sentences) {
@@ -80,6 +90,7 @@ export default function Reader({ doc, activeIdx, wordSync, wordStart, wordEnd, o
   return (
     <article>
       <h1 className="font-reading text-section font-semibold">{doc.title}</h1>
+      {header}
       <div className="mt-6 font-reading text-reading">
         {paragraphs.map(({ para, sentences }) => (
           <p key={para} className={isHeading(sentences) ? 'mt-8 font-semibold' : 'mt-5'}>

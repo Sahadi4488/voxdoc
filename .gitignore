@@ -3,8 +3,11 @@
 __pycache__/
 *.pyc
 
-# Secrets (Groq API key goes here later)
+# Secrets: backend/.env holds the Groq API key. backend/.env.example is the
+# committed template; frontend/.env.development holds no secrets.
 .env
+.env.local
+.env.*.local
 
 # Generated audio
 *.wav

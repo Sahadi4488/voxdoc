@@ -157,7 +157,7 @@ def test_deleting_a_document_deletes_its_chunks(client):
 def test_v2_database_is_migrated_not_refused(tmp_path, monkeypatch):
     path = tmp_path / "v2.db"
     old = sqlite3.connect(path)
-    old.executescript(db.SCHEMA.replace(db.CHUNKS_SCHEMA, ""))  # the Day 7-10 schema
+    old.executescript(db.SCHEMA.replace(db.CHUNKS_SCHEMA, "").replace(db.SUMMARIES_SCHEMA, ""))  # Day 7-10
     old.execute("INSERT INTO documents (public_id, title, filename, stored_name, created_at) VALUES ('p', 't', 'f', 's', 'c')")
     old.execute("PRAGMA user_version = 2")
     old.commit()

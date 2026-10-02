@@ -6,7 +6,7 @@ directory), so starting the server from anywhere uses the same database.
 """
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -37,6 +37,19 @@ class Settings(BaseSettings):
     index_on_upload: bool = False
     # Load MiniLM at startup, so the first question only waits for embedding (~2 s / 15 pages)
     warm_embedder: bool = False
+    # Groq (Day 12). SecretStr: printing settings or a traceback shows '**********', never the
+    # key. Without a key the reader and audio still work; the AI endpoints answer 503.
+    groq_api_key: SecretStr | None = None
+    # Separate models: Groq's free-plan limits are per model, so summaries and Q&A don't
+    # use up each other's tokens-per-minute budget.
+    groq_summary_model: str = "openai/gpt-oss-20b"
+    groq_qa_model: str = "openai/gpt-oss-120b"
+
+    @field_validator("groq_api_key")
+    @classmethod
+    def _blank_key_is_no_key(cls, v: SecretStr | None) -> SecretStr | None:
+        # VOXDOC_GROQ_API_KEY= (copied from .env.example unfilled) means "not configured"
+        return v if v is not None and v.get_secret_value().strip() else None
 
     @model_validator(mode="after")
     def _resolve_paths(self):
