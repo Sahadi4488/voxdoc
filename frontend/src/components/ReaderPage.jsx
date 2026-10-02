@@ -66,6 +66,9 @@ export default function ReaderPage({ docId }) {
       <Reader
         doc={doc}
         activeIdx={showHighlight ? player.currentIdx : null}
+        wordSync={player.wordSync}
+        wordStart={player.wordStart}
+        wordEnd={player.wordEnd}
         onSentenceClick={player.playFrom}
         bottomInset={bottomInset}
       />

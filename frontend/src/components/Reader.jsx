@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 
 // A paragraph that is one short sentence without terminal punctuation reads as a heading
 const isHeading = (sentences) =>
@@ -7,11 +7,49 @@ const isHeading = (sentences) =>
 const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 /**
+ * One sentence. Memoised: a word change re-renders only the active sentence,
+ * because every other sentence gets the same primitive props as before
+ * (isActive false, wordStart/wordEnd null) and the same stable onClick.
+ */
+const Sentence = memo(function Sentence({ ref, idx, text, isActive, wordSync, wordStart, wordEnd, onClick }) {
+  if (import.meta.env.DEV) (window.__sentenceRenders ??= {})[idx] = (window.__sentenceRenders[idx] ?? 0) + 1
+
+  const hasWord = isActive && wordStart !== null && wordEnd !== null
+  // The highlighter means "the voice is here", at two levels of focus: the sentence
+  // faintly and the word at full strength. Without word timings, the whole sentence.
+  const sentenceBg = isActive ? (wordSync ? 'bg-highlighter/35' : 'bg-highlighter') : ''
+  return (
+    <>
+      <span
+        ref={ref}
+        data-idx={idx}
+        aria-current={isActive ? 'true' : undefined}
+        onClick={() => onClick(idx)}
+        className={`cursor-pointer rounded-sm box-decoration-clone decoration-pen decoration-2 underline-offset-4 ${
+          isActive ? sentenceBg : 'hover:underline'
+        }`}
+      >
+        {hasWord ? (
+          <>
+            {text.slice(0, wordStart)}
+            <mark className="rounded-sm bg-highlighter box-decoration-clone text-ink">{text.slice(wordStart, wordEnd)}</mark>
+            {text.slice(wordEnd)}
+          </>
+        ) : (
+          text
+        )}
+      </span>{' '}
+    </>
+  )
+})
+
+/**
  * The document text, grouped into paragraphs. `activeIdx` (or null) gets the
- * highlighter; clicking a sentence calls onSentenceClick(idx).
+ * highlighter; clicking a sentence calls onSentenceClick(idx), which must be
+ * stable (useCallback) for the memoised sentences to skip re-rendering.
  * `bottomInset()` returns the height covered by the fixed player bar.
  */
-export default function Reader({ doc, activeIdx, onSentenceClick, bottomInset = () => 0 }) {
+export default function Reader({ doc, activeIdx, wordSync, wordStart, wordEnd, onSentenceClick, bottomInset = () => 0 }) {
   const paragraphs = useMemo(() => {
     const groups = []
     for (const s of doc.sentences) {
@@ -48,19 +86,17 @@ export default function Reader({ doc, activeIdx, onSentenceClick, bottomInset = 
             {sentences.map((s) => {
               const active = s.idx === activeIdx
               return (
-                <span key={s.idx}>
-                  <span
-                    ref={active ? activeRef : null}
-                    data-idx={s.idx}
-                    aria-current={active ? 'true' : undefined}
-                    onClick={() => onSentenceClick(s.idx)}
-                    className={`cursor-pointer rounded-sm decoration-pen decoration-2 underline-offset-4 ${
-                      active ? 'bg-highlighter box-decoration-clone' : 'hover:underline'
-                    }`}
-                  >
-                    {s.text}
-                  </span>{' '}
-                </span>
+                <Sentence
+                  key={s.idx}
+                  ref={active ? activeRef : undefined}
+                  idx={s.idx}
+                  text={s.text}
+                  isActive={active}
+                  wordSync={active && wordSync}
+                  wordStart={active ? wordStart : null}
+                  wordEnd={active ? wordEnd : null}
+                  onClick={onSentenceClick}
+                />
               )
             })}
           </p>

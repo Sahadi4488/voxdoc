@@ -47,6 +47,15 @@ def test_malformed_sidecar_is_a_miss(tmp_path, sidecar):
     assert audio_cache.get(key, tmp_path) is None
 
 
+def test_version_bump_turns_old_entries_into_misses(tmp_path, monkeypatch):
+    key_v2 = cache_key("Hello.", "af_heart", 1)
+    monkeypatch.setattr(audio_cache, "CACHE_VERSION", "v1")
+    key_v1 = cache_key("Hello.", "af_heart", 1)
+    audio_cache.put(key_v1, np.zeros(10, dtype=np.float32), [], tmp_path)  # an entry written by old code
+    monkeypatch.undo()
+    assert key_v1 != key_v2 and audio_cache.get(key_v2, tmp_path) is None
+
+
 def test_rejects_bad_keys(tmp_path):
     with pytest.raises(ValueError):
         audio_cache.get("../../etc/passwd", tmp_path)

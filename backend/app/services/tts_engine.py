@@ -13,7 +13,7 @@ import soundfile as sf
 
 from app.services import audio_cache
 from app.services.audio_cache import SAMPLE_RATE, cache_key, normalize_text
-from app.services.timings import timings_from_results
+from app.services.timings import align, timings_from_results
 from app.services.voices import lang_code_for
 
 REPO_ID = "hexgrad/Kokoro-82M"
@@ -54,14 +54,15 @@ class TTSEngine:
         self.pipeline("a")
 
     def synthesize(self, text: str, kokoro_voice: str, speed: float) -> tuple[np.ndarray, list[dict]]:
-        """-> (float32 audio at 24 kHz, word timings offset across Kokoro's chunks)."""
+        """-> (float32 audio at 24 kHz, word timings offset across Kokoro's chunks and
+        aligned to character offsets in `text`, which is what the frontend displays)."""
         pipe = self.pipeline(lang_code_for(kokoro_voice))
         with self.lock:
             results = [r for r in pipe(normalize_text(text), voice=kokoro_voice, speed=speed) if r.audio is not None]
         if not results:
             raise SynthesisError(f"No audio produced for {text!r}.")
         audio = np.concatenate([r.audio.cpu().numpy() for r in results]).astype(np.float32)
-        return audio, timings_from_results(results)
+        return audio, align(text, timings_from_results(results))
 
 
 @lru_cache(maxsize=1)

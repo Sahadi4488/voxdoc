@@ -50,6 +50,10 @@ class WordTiming(BaseModel):
     word: str
     start: float
     end: float
+    # Where the word sits in the sentence text, as JavaScript (UTF-16) string
+    # indices; None if it couldn't be aligned
+    char_start: int | None = None
+    char_end: int | None = None
 
 
 class TTSResponse(BaseModel):

@@ -22,7 +22,7 @@ import soundfile as sf
 
 from app.config import settings
 
-CACHE_VERSION = "v1"  # bump when the audio or timing format changes
+CACHE_VERSION = "v2"  # bump when the audio or timing format changes (v2: timings carry char offsets)
 SAMPLE_RATE = 24000
 # Default directory is settings.audio_cache_dir, read at call time (never
 # captured at import) so tests can point it at a temp folder.

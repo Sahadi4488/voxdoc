@@ -25,6 +25,18 @@ const PREFETCH = !(import.meta.env.DEV && new URLSearchParams(window.location.se
 
 const clipKey = (idx, voice, speed) => `${idx}|${voice}|${speed}`
 
+/**
+ * The clip's aligned words for highlighting, or null -> sentence highlighting.
+ * Fallback rule (brief): no timings, or fewer than half the words aligned.
+ */
+function usableWords(clip, idx) {
+  const timings = clip.timings ?? []
+  const aligned = timings.filter((t) => t.char_start != null && t.char_end != null)
+  if (timings.length && aligned.length >= timings.length / 2) return aligned
+  console.warn(`VoxDoc: sentence ${idx} has ${aligned.length}/${timings.length} aligned words; using sentence highlighting`)
+  return null
+}
+
 function getCache(ref) {
   if (!ref.current) ref.current = new Map()
   return ref.current
@@ -43,6 +55,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
   const [currentIdx, setCurrentIdx] = useState(0)
   const [clip, setClip] = useState(null) // current /tts response (timings for Day 10)
   const [error, setError] = useState(null)
+  const [wordIdx, setWordIdx] = useState(null) // index into clip.words of the word being spoken
 
   const audioRef = useRef(null)
   // Map<clipKey, {idx, voice, speed, promise}>: promises, so in-flight clips aren't requested twice.
@@ -53,6 +66,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
   const statusRef = useRef('idle')
   const loadedKeyRef = useRef(null) // clipKey of what's in (or about to be in) audio.src
   const voiceRef = useRef(voice)
+  const wordIdxRef = useRef(null)
   const speedRef = useRef(speed)
 
   // Declared first: later effects in the same commit read the new values
@@ -64,6 +78,13 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
   const changeStatus = useCallback((s) => {
     statusRef.current = s
     setStatus(s)
+  }, [])
+
+  // setState only when the word actually changes (the loop runs at 60 fps)
+  const setWord = useCallback((i) => {
+    if (wordIdxRef.current === i) return
+    wordIdxRef.current = i
+    setWordIdx(i)
   }, [])
 
   const fail = useCallback(
@@ -103,6 +124,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       const audio = getAudio(audioRef)
       unlockAudio(audio) // first call only; must happen before any await
       audio.pause() // a jump silences the old clip at once: no overlap
+      setWord(null) // the old word must not stay highlighted while the new clip loads
       idxRef.current = idx
       setCurrentIdx(idx)
       setError(null)
@@ -125,7 +147,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       }
       if (token !== tokenRef.current) return // a newer jump won
 
-      setClip(data)
+      setClip({ ...data, words: usableWords(data, idx) })
       audio.src = audioUrl(data.audio_url)
       try {
         await audio.play()
@@ -139,7 +161,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       changeStatus('playing')
       if (PREFETCH && idx + 1 < sentenceCount) fetchClip(idx + 1)
     },
-    [docId, sentenceCount, fetchClip, changeStatus, fail],
+    [docId, sentenceCount, fetchClip, changeStatus, fail, setWord],
   )
 
   const pause = useCallback(() => {
@@ -190,6 +212,33 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
     }, RESTART_DELAY_MS)
     return () => clearTimeout(t)
   }, [voice, speed, playFrom])
+
+  // Word sync: read audio.currentTime on every animation frame (timeupdate fires
+  // only ~4x a second; words last 200-400 ms). Runs only while playing: pause,
+  // ended, a jump (status -> loading) and unmount all cancel it via cleanup.
+  useEffect(() => {
+    const words = clip?.words
+    if (status !== 'playing' || !words) return
+    const audio = getAudio(audioRef)
+    // A jump bumps the token synchronously, but this loop only stops when React
+    // commits the new status. Until then it must not write: it would put the old
+    // sentence's word index back after playFrom reset it.
+    const token = tokenRef.current
+    let i = -1 // index into this clip's words; the first tick catches up (also after resume)
+    let raf
+    const tick = () => {
+      if (token !== tokenRef.current) return
+      const t = audio.currentTime
+      if (i >= 0 && words[i].start > t) i = -1 // time went backwards: search from the start
+      while (i + 1 < words.length && words[i + 1].start <= t) i++
+      // The last word that has started: in the silence between words the
+      // previous one stays lit, so the highlight doesn't flicker off and on.
+      setWord(i >= 0 ? i : null)
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [status, clip, setWord])
 
   // Audio element events. Re-registered when playFrom changes, always with cleanup,
   // so a listener is never attached twice (StrictMode would otherwise expose it).
@@ -249,5 +298,22 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
     }
   }, [docId, sentenceCount, voice, speed, fetchClip])
 
-  return { status, currentIdx, clip, error, play, pause, toggle, next, prev, playFrom }
+  const word = wordIdx !== null ? clip?.words?.[wordIdx] : null
+  return {
+    status,
+    currentIdx,
+    clip,
+    error,
+    // Character range of the spoken word in the current sentence, or null
+    wordStart: word ? word.char_start : null,
+    wordEnd: word ? word.char_end : null,
+    // false when the clip's timings are unusable: highlight the whole sentence instead
+    wordSync: !!clip?.words,
+    play,
+    pause,
+    toggle,
+    next,
+    prev,
+    playFrom,
+  }
 }

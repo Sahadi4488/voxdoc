@@ -21,6 +21,9 @@ def test_timings_end_near_duration(engine):
     assert len(timings) == len(SENTENCE.split())
     assert abs(timings[-1]["end"] - duration) <= 0.3
     assert all(a["end"] <= b["start"] + 1e-6 for a, b in zip(timings, timings[1:]))
+    # every word aligned, and the spans spell out the sentence's words
+    assert all(t["char_start"] is not None for t in timings)
+    assert [SENTENCE[t["char_start"]:t["char_end"]] for t in timings] == SENTENCE.split()
 
 
 def test_multi_chunk_timings_are_offset(engine):
