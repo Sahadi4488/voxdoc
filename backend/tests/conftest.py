@@ -1,5 +1,7 @@
+import re
 import threading
 import time
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import app
+from app.services.embeddings import get_embedder
 from app.services.tts_engine import get_tts_engine
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -21,6 +24,7 @@ def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
     monkeypatch.setattr(settings, "audio_cache_dir", tmp_path / "audio_cache")
     monkeypatch.setattr(settings, "warm_tts", False)
+    monkeypatch.setattr(settings, "warm_embedder", False)
     return tmp_path
 
 
@@ -46,9 +50,44 @@ def fake_engine():
     return FakeEngine()
 
 
+class FakeEmbedder:
+    """Deterministic bag-of-words vectors: texts that share words score higher.
+    Tokens = words + [CLS]/[SEP]. Records every embed call."""
+
+    model_name = "fake-bow"
+    max_tokens = 256
+    dim = 64
+
+    def __init__(self):
+        self.document_calls = 0
+
+    def count_tokens(self, text):
+        return len(text.split()) + 2
+
+    def _vec(self, text):
+        v = np.zeros(self.dim, dtype=np.float32)
+        for w in re.findall(r"[a-z0-9.%]+", text.lower()):
+            v[zlib.crc32(w.encode()) % self.dim] += 1
+        n = np.linalg.norm(v)
+        return v / n if n else v
+
+    def embed_documents(self, texts):
+        self.document_calls += 1
+        return np.stack([self._vec(t) for t in texts]) if texts else np.zeros((0, self.dim), np.float32)
+
+    def embed_query(self, text):
+        return self._vec(text)
+
+
 @pytest.fixture()
-def client(fake_engine):
+def fake_embedder():
+    return FakeEmbedder()
+
+
+@pytest.fixture()
+def client(fake_engine, fake_embedder):
     app.dependency_overrides[get_tts_engine] = lambda: fake_engine
+    app.dependency_overrides[get_embedder] = lambda: fake_embedder
     try:
         with TestClient(app) as c:  # `with` runs the lifespan (init_db)
             yield c

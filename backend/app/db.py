@@ -16,7 +16,24 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.services.splitter import Sentence
 
-SCHEMA_VERSION = 2  # 2: public_id, sentences.para
+SCHEMA_VERSION = 3  # 2: public_id, sentences.para; 3: chunks
+
+CHUNKS_SCHEMA = """
+CREATE TABLE IF NOT EXISTS chunks (
+    doc_id    INTEGER NOT NULL,
+    idx       INTEGER NOT NULL,
+    text      TEXT NOT NULL,
+    start_idx INTEGER NOT NULL,         -- first sentence (inclusive): chunks are citable sentence ranges
+    end_idx   INTEGER NOT NULL,         -- last sentence (inclusive)
+    embedding BLOB NOT NULL,            -- float32 vector, L2-normalised
+    model     TEXT NOT NULL,            -- vectors from different models aren't comparable: re-index on change
+    PRIMARY KEY (doc_id, idx),
+    FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
+);
+"""
+
+# from_version -> SQL that brings a database to from_version + 1
+MIGRATIONS = {2: CHUNKS_SCHEMA}
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS documents (
@@ -37,7 +54,7 @@ CREATE TABLE IF NOT EXISTS sentences (
     PRIMARY KEY (doc_id, idx),
     FOREIGN KEY (doc_id) REFERENCES documents(id) ON DELETE CASCADE
 );
-"""
+""" + CHUNKS_SCHEMA
 
 _DOCUMENT_SELECT = """
 SELECT d.id AS _pk, d.public_id AS id, d.title, d.filename, d.created_at,
@@ -68,12 +85,15 @@ def init_db() -> None:
     try:
         version = conn.execute("PRAGMA user_version").fetchone()[0]
         has_tables = conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'documents'").fetchone()
-        if has_tables and version != SCHEMA_VERSION:
-            raise SchemaMismatchError(
-                f"{settings.db_path} has schema version {version}, this code needs {SCHEMA_VERSION}. "
-                "It only holds development data: delete it (and data/uploads) and restart."
-            )
         conn.execute("PRAGMA journal_mode = WAL")  # readers don't block the writer; persists in the file
+        if has_tables and version != SCHEMA_VERSION:
+            if not all(v in MIGRATIONS for v in range(version, SCHEMA_VERSION)):
+                raise SchemaMismatchError(
+                    f"{settings.db_path} has schema version {version}, this code needs {SCHEMA_VERSION}. "
+                    "It only holds development data: delete it (and data/uploads) and restart."
+                )
+            for v in range(version, SCHEMA_VERSION):
+                conn.executescript(MIGRATIONS[v])
         conn.executescript(SCHEMA)
         conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")  # PRAGMA can't take "?"; constant int
     finally:
@@ -125,3 +145,37 @@ def get_document(conn: sqlite3.Connection, public_id: str, with_sentences: bool 
         doc["sentences"] = [dict(r) for r in conn.execute(
             "SELECT idx, text, page, para FROM sentences WHERE doc_id = ? ORDER BY idx", (pk,))]
     return doc
+
+
+# --------------------------------------------------------------------------- retrieval (Day 11)
+# These take the internal integer key: they're called by services, never with user input directly.
+
+def get_doc_pk(conn: sqlite3.Connection, public_id: str) -> int | None:
+    row = conn.execute("SELECT id FROM documents WHERE public_id = ?", (public_id,)).fetchone()
+    return row["id"] if row else None
+
+
+def get_sentences(conn: sqlite3.Connection, doc_pk: int) -> list[Sentence]:
+    rows = conn.execute("SELECT idx, text, page, para FROM sentences WHERE doc_id = ? ORDER BY idx", (doc_pk,))
+    return [Sentence(r["idx"], r["text"], r["page"], r["para"]) for r in rows]
+
+
+def count_chunks(conn: sqlite3.Connection, doc_pk: int, model: str) -> int:
+    return conn.execute("SELECT COUNT(*) FROM chunks WHERE doc_id = ? AND model = ?", (doc_pk, model)).fetchone()[0]
+
+
+def replace_chunks(conn: sqlite3.Connection, doc_pk: int, chunks, blobs: list[bytes], model: str) -> None:
+    """Swap a document's chunks for new ones in one transaction (old model's included)."""
+    with conn:
+        conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_pk,))
+        conn.executemany(
+            "INSERT INTO chunks (doc_id, idx, text, start_idx, end_idx, embedding, model) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(doc_pk, c.idx, c.text, c.start_idx, c.end_idx, blob, model) for c, blob in zip(chunks, blobs)],
+        )
+
+
+def get_chunks(conn: sqlite3.Connection, doc_pk: int, model: str) -> list[sqlite3.Row]:
+    return conn.execute(
+        "SELECT idx, text, start_idx, end_idx, embedding FROM chunks WHERE doc_id = ? AND model = ? ORDER BY idx",
+        (doc_pk, model),
+    ).fetchall()

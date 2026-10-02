@@ -10,6 +10,7 @@ from app.config import settings
 from app.db import init_db
 from app.routers import documents, tts
 from app.services import splitter
+from app.services.embeddings import get_embedder
 from app.services.tts_engine import get_tts_engine
 
 
@@ -19,6 +20,8 @@ async def lifespan(app: FastAPI):
     splitter.warm_up()  # load spaCy now so the first upload isn't 3 s slower
     if settings.warm_tts:  # off by default: Kokoro takes seconds to load on every dev reload
         get_tts_engine().warm_up()
+    if settings.warm_embedder:
+        get_embedder().warm_up()
     yield
 
 

@@ -9,12 +9,14 @@ import uuid
 from pathlib import Path
 from typing import BinaryIO
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile
 
 from app import db
 from app.config import settings
 from app.schemas import DocumentDetail, DocumentOut, ErrorOut
+from app.services.embeddings import Embedder, get_embedder
 from app.services.extractor import NoTextError, UnreadableFileError, extract
+from app.services.indexer import index_document
 from app.services.splitter import split
 
 router = APIRouter(prefix="/documents", tags=["documents"])
@@ -29,7 +31,9 @@ CHUNK = 1024 * 1024
     response_model=DocumentOut,
     responses={code: {"model": ErrorOut} for code in (400, 413, 415, 422)},
 )
-def upload_document(file: UploadFile, conn: sqlite3.Connection = Depends(db.get_db)):
+def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
+                    conn: sqlite3.Connection = Depends(db.get_db),
+                    embedder: Embedder = Depends(get_embedder)):
     filename = _basename(file.filename)
     suffix = Path(filename).suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
@@ -63,6 +67,9 @@ def upload_document(file: UploadFile, conn: sqlite3.Connection = Depends(db.get_
     except BaseException:
         stored.unlink(missing_ok=True)  # no orphan files; the DB transaction already rolled back
         raise
+    if settings.index_on_upload:
+        # Runs after the response is sent; retrieval re-checks, so a failure here self-heals
+        background_tasks.add_task(index_document, public_id, embedder)
     return db.get_document(conn, public_id, with_sentences=False)
 
 

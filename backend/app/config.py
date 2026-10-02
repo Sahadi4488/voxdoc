@@ -29,6 +29,14 @@ class Settings(BaseSettings):
     # Load Kokoro at startup instead of on the first /tts request. Off by default:
     # `fastapi dev` reloads on every save and would reload the model each time.
     warm_tts: bool = False
+    # Retrieval (Day 11). Changing the model re-indexes documents on their next question.
+    embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Embed a document in the background right after upload, or lazily on its first question.
+    # Off: measured on Day 11, background indexing slowed the first audio after an upload by
+    # 35% (3.52 s -> 4.77 s, 15-page PDF), over the 30% limit. The demo moment comes first.
+    index_on_upload: bool = False
+    # Load MiniLM at startup, so the first question only waits for embedding (~2 s / 15 pages)
+    warm_embedder: bool = False
 
     @model_validator(mode="after")
     def _resolve_paths(self):
