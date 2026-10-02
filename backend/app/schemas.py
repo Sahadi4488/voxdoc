@@ -1,8 +1,8 @@
 """API response models."""
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class DocumentOut(BaseModel):
@@ -72,3 +72,23 @@ class SummaryOut(BaseModel):
     model: str
     created_at: datetime
     cached: bool
+
+
+class AskRequest(BaseModel):
+    # Whitespace is stripped first, so "   " is too short: 422
+    question: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+class TextPart(BaseModel):
+    text: str
+
+
+class CitePart(BaseModel):
+    cite: int = Field(description="Global sentence idx, as in DocumentDetail.sentences")
+
+
+class AnswerOut(BaseModel):
+    parts: list[TextPart | CitePart] = Field(description="The answer in reading order: text and citation chips")
+    citations: list[int] = Field(description="Sorted, unique sentence indices cited")
+    found: bool = Field(description="False: the document doesn't answer the question")
+    grounded: bool = Field(description="found, and at least one citation is of a sentence the model was shown")

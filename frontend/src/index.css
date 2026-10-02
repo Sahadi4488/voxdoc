@@ -47,3 +47,15 @@
     background: color-mix(in srgb, var(--color-pen) 20%, transparent);
   }
 }
+
+/*
+  Wide screens (lg): the open chat panel is fixed to the right, 24rem (w-96).
+  The page and the player bar centre themselves in the space left of it, so no
+  text hides behind the panel. Pure CSS: ChatPanel sets data-chat-open.
+*/
+@media (width >= 64rem) {
+  body:has([data-chat-open]),
+  body:has([data-chat-open]) [data-player-bar] {
+    padding-right: 24rem;
+  }
+}

@@ -1,7 +1,7 @@
 import { memo, useEffect, useId, useRef, useState } from 'react'
 import { summarizeDocument } from '../api'
-
-const focusRing = 'outline-offset-2 outline-pen focus-visible:outline-2'
+import { outlineButton } from '../lib/styles'
+import { formatWait } from '../lib/wait'
 
 const ChevronIcon = ({ up }) => (
   <svg
@@ -18,12 +18,6 @@ const ChevronIcon = ({ up }) => (
   </svg>
 )
 
-/** "7 seconds", "1 second", "3 minutes" (a daily limit can mean a long wait). */
-function formatWait(seconds) {
-  if (seconds < 90) return `${seconds} second${seconds === 1 ? '' : 's'}`
-  return `${Math.ceil(seconds / 60)} minutes`
-}
-
 function errorText(err) {
   if (err.status === 429) return `The summary service is busy. Try again in ${formatWait(err.retryAfter ?? 10)}.`
   if (err.status === 503) return "Summaries aren't available on this server."
@@ -36,10 +30,11 @@ function errorText(err) {
  *
  * The button is a disclosure (aria-expanded). Once the summary has loaded,
  * clicking it collapses and reopens the panel instantly, with no new request;
- * after an error, clicking it tries again. Memoised: ReaderPage re-renders on
- * every spoken word, this only when docId changes.
+ * after an error, clicking it tries again. `actions` are more buttons for the
+ * same row (Ask). Memoised: ReaderPage re-renders on every spoken word, this
+ * only when its props change.
  */
-function SummaryPanel({ docId }) {
+function SummaryPanel({ docId, actions = null }) {
   const [state, setState] = useState({ status: 'idle' }) // idle | loading | done | error
   const [open, setOpen] = useState(false)
   const busy = useRef(false) // set synchronously: a fast double-click can't start two requests
@@ -78,18 +73,21 @@ function SummaryPanel({ docId }) {
   const expanded = status === 'done' && open
   return (
     <div className="mt-4">
-      <button
-        type="button"
-        onClick={onClick}
-        aria-expanded={expanded}
-        aria-controls={status === 'done' ? panelId : undefined}
-        // aria-disabled, not disabled: a disabled button drops keyboard focus
-        aria-disabled={loading || undefined}
-        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-rule px-3 py-1.5 text-sm font-bold text-pen hover:border-pen aria-disabled:cursor-wait aria-disabled:opacity-60 ${focusRing}`}
-      >
-        {loading ? 'Summarizing…' : 'Summarize'}
-        {!loading && <ChevronIcon up={expanded} />}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={onClick}
+          aria-expanded={expanded}
+          aria-controls={status === 'done' ? panelId : undefined}
+          // aria-disabled, not disabled: a disabled button drops keyboard focus
+          aria-disabled={loading || undefined}
+          className={outlineButton}
+        >
+          {loading ? 'Summarizing…' : 'Summarize'}
+          {!loading && <ChevronIcon up={expanded} />}
+        </button>
+        {actions}
+      </div>
 
       <p className="sr-only" aria-live="polite">
         {loading ? 'Summarizing…' : expanded ? 'Summary ready.' : ''}

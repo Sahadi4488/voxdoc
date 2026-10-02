@@ -12,6 +12,7 @@ from pydantic import SecretStr
 
 from app.config import settings
 from app.main import app
+from app.routers.qa import get_question_limiter
 from app.services.embeddings import get_embedder
 from app.services.llm import LLMClient, get_llm_client
 from app.services.tts_engine import get_tts_engine
@@ -33,8 +34,10 @@ def isolated_data(tmp_path, monkeypatch):
     # A key in backend/.env must never reach the tests: no test spends real quota by accident
     monkeypatch.setattr(settings, "groq_api_key", None)
     get_llm_client.cache_clear()
+    get_question_limiter.cache_clear()  # every test starts with a fresh per-visitor limit
     yield tmp_path
     get_llm_client.cache_clear()
+    get_question_limiter.cache_clear()
 
 
 class FakeEngine:

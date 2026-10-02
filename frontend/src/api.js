@@ -44,6 +44,20 @@ export async function summarizeDocument(docId, signal) {
   )
 }
 
+/** Ask a question about the document: { parts, citations, found, grounded }. */
+export async function askQuestion(docId, question, signal) {
+  return request(
+    `/documents/${encodeURIComponent(docId)}/ask`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question }),
+      signal,
+    },
+    'Could not answer the question',
+  )
+}
+
 /** Absolute URL for an audio path returned by /tts (e.g. "/audio/<key>.wav"). */
 export function audioUrl(path) {
   return `${API_URL}${path}`
@@ -59,8 +73,10 @@ async function request(path, options, failure) {
     throw new Error(NETWORK_ERROR)
   }
   if (!res.ok) {
-    const err = new Error(await errorMessage(res, failure))
+    const { message, code } = await errorDetails(res, failure)
+    const err = new Error(message)
     err.status = res.status
+    if (code) err.code = code // e.g. "rate_limited": the visitor's own limit, not a busy server
     // Seconds to wait after a 429. Cross-origin (the dev server) JS can read it
     // only because the backend lists it in CORS expose_headers.
     const retryAfter = Number.parseInt(res.headers.get('Retry-After'), 10)
@@ -70,15 +86,16 @@ async function request(path, options, failure) {
   return res.json()
 }
 
-async function errorMessage(res, failure) {
-  let detail
+async function errorDetails(res, failure) {
+  let body = {}
   try {
-    detail = (await res.json()).detail
+    body = await res.json()
   } catch {
     // not JSON (e.g. a proxy error page)
   }
+  const { detail, code } = body ?? {}
   // FastAPI: a string for HTTPException, a list of {msg, ...} for validation errors
-  if (typeof detail === 'string' && detail) return detail
-  if (Array.isArray(detail) && detail.length) return detail.map((d) => d.msg).join(' ')
-  return `${failure} (HTTP ${res.status}).`
+  if (typeof detail === 'string' && detail) return { message: detail, code }
+  if (Array.isArray(detail) && detail.length) return { message: detail.map((d) => d.msg).join(' '), code }
+  return { message: `${failure} (HTTP ${res.status}).`, code }
 }

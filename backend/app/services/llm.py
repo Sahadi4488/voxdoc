@@ -83,11 +83,13 @@ class LLMClient:
         if self._client is None:
             raise LLMNotConfigured("no Groq API key (set VOXDOC_GROQ_API_KEY in backend/.env)")
 
-    def complete_json(self, model: str, prompt: str, max_tokens: int, schema: type[M]) -> M:
-        """One answer from `model`, validated as `schema`. Invalid JSON is retried once."""
+    def complete_json(self, model: str, prompt: str, max_tokens: int, schema: type[M],
+                      reasoning_effort: str = "low") -> M:
+        """One answer from `model`, validated as `schema`. Invalid JSON is retried once.
+        Low reasoning effort keeps thinking tokens, which count against max_tokens, few."""
         self.require_configured()
         for attempt in (1, 2):
-            content = self._complete(model, prompt, max_tokens)
+            content = self._complete(model, prompt, max_tokens, reasoning_effort)
             if content is None:
                 reason = "Groq's JSON mode rejected the output (json_validate_failed)"
             else:
@@ -98,7 +100,7 @@ class LLMClient:
             log.warning("%s answer unusable (attempt %d of 2): %s", model, attempt, reason)
         raise LLMError(f"{model} returned unusable JSON twice")
 
-    def _complete(self, model: str, prompt: str, max_tokens: int) -> str | None:
+    def _complete(self, model: str, prompt: str, max_tokens: int, reasoning_effort: str) -> str | None:
         """One request. Returns the content, or None if Groq's JSON mode rejected it."""
         started = time.perf_counter()
         try:
@@ -106,7 +108,7 @@ class LLMClient:
                 model=model,
                 # Groq's reasoning guide: every instruction in the user message, no system prompt
                 messages=[{"role": "user", "content": prompt}],
-                reasoning_effort="low",  # few thinking tokens: they count against max_tokens
+                reasoning_effort=reasoning_effort,
                 include_reasoning=False,  # leave the reasoning text out of the response
                 response_format={"type": "json_object"},
                 max_completion_tokens=max_tokens,

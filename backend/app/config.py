@@ -44,6 +44,13 @@ class Settings(BaseSettings):
     # use up each other's tokens-per-minute budget.
     groq_summary_model: str = "openai/gpt-oss-20b"
     groq_qa_model: str = "openai/gpt-oss-120b"
+    # Q&A (Day 13). A question whose best chunk scores below this gets "not found" without
+    # a Groq call. Day 11 eval with the real MiniLM: off-topic questions topped out at
+    # 0.166, on-topic ones started at 0.277.
+    qa_min_score: float = 0.22
+    # Questions per visitor (IP address) per window; in memory, so per process
+    qa_rate_limit: int = 10
+    qa_rate_window_s: int = 600
 
     @field_validator("groq_api_key")
     @classmethod

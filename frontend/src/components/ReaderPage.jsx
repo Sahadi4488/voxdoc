@@ -1,12 +1,16 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useDocument } from '../hooks/useDocument'
 import { usePlayer } from '../hooks/usePlayer'
 import { useVoicePrefs } from '../hooks/useVoicePrefs'
 import { useVoices } from '../hooks/useVoices'
+import { outlineButton } from '../lib/styles'
+import ChatPanel from './ChatPanel'
 import PlayerBar from './PlayerBar'
 import Reader from './Reader'
 import SummaryPanel from './SummaryPanel'
 import VoicePicker from './VoicePicker'
+
+const WIDE = '(min-width: 64rem)' // Tailwind's lg: the chat panel sits beside the text
 
 /**
  * Everything that belongs to one open document. App renders it with
@@ -25,6 +29,42 @@ export default function ReaderPage({ docId }) {
   })
   const barRef = useRef(null)
   const bottomInset = useCallback(() => barRef.current?.offsetHeight ?? 0, [])
+
+  // Questions panel
+  const [chatOpen, setChatOpen] = useState(false)
+  const askRef = useRef(null)
+  const chatId = useId()
+  const closeChat = useCallback(() => {
+    setChatOpen(false)
+    askRef.current?.focus({ preventScroll: true }) // the reader may be scrolled far below the button
+  }, [])
+  const { playFrom } = player
+  // A chip click is a user gesture, so playback may start. The reader's
+  // auto-scroll brings the sentence into view; on narrow screens the panel
+  // covers the text, so it closes first.
+  const onCite = useCallback(
+    (idx) => {
+      if (!window.matchMedia(WIDE).matches) closeChat()
+      playFrom(idx)
+    },
+    [closeChat, playFrom],
+  )
+  // Memoised so the memoised SummaryPanel, which shows it, skips the word-rate re-renders
+  const askButton = useMemo(
+    () => (
+      <button
+        ref={askRef}
+        type="button"
+        onClick={() => setChatOpen((o) => !o)}
+        aria-expanded={chatOpen}
+        aria-controls={chatId}
+        className={outlineButton}
+      >
+        Ask
+      </button>
+    ),
+    [chatOpen, chatId],
+  )
 
   // Keyboard: Space = play/pause, arrows = previous/next sentence
   const { toggle, next, prev, pause } = player
@@ -72,7 +112,7 @@ export default function ReaderPage({ docId }) {
         wordEnd={player.wordEnd}
         onSentenceClick={player.playFrom}
         bottomInset={bottomInset}
-        header={<SummaryPanel docId={doc.id} />}
+        header={<SummaryPanel docId={doc.id} actions={askButton} />}
       />
       <PlayerBar
         ref={barRef}
@@ -93,6 +133,15 @@ export default function ReaderPage({ docId }) {
             />
           )
         }
+      />
+      <ChatPanel
+        id={chatId}
+        open={chatOpen}
+        onClose={closeChat}
+        docId={doc.id}
+        sentences={doc.sentences}
+        onCite={onCite}
+        barRef={barRef}
       />
     </div>
   )

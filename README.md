@@ -1,9 +1,10 @@
 # VoxDoc
 
 Upload a PDF or Word document; VoxDoc reads it aloud with Kokoro TTS, highlights each
-word as it's spoken, and summarises it with gpt-oss on Groq. Runs on a CPU-only laptop.
+word as it's spoken, summarises it, and answers questions about it with citations that jump
+to the cited sentence (gpt-oss on Groq). Runs on a CPU-only laptop.
 
-- `backend/`: FastAPI, SQLite, Kokoro-82M (speech), all-MiniLM-L6-v2 (retrieval), Groq (summaries)
+- `backend/`: FastAPI, SQLite, Kokoro-82M (speech), all-MiniLM-L6-v2 (retrieval), Groq (summaries, Q&A)
 - `frontend/`: React 19, Vite, Tailwind v4
 
 ## Run it locally (Windows, PowerShell)
@@ -26,15 +27,15 @@ npm run dev                     # http://localhost:5173
 
 **Configuration** comes from environment variables or `backend/.env` (git-ignored), all
 prefixed `VOXDOC_`; see `backend/.env.example` and `backend/app/config.py`. Without
-`VOXDOC_GROQ_API_KEY` the app still runs: reading and audio work, and summaries answer
-503 "AI features aren't configured on this server".
+`VOXDOC_GROQ_API_KEY` the app still runs: reading and audio work, and summaries and
+questions answer 503 "AI features aren't configured on this server".
 
 **Tests**, from `backend/`:
 
 ```powershell
 .venv\Scripts\python -m pytest -q          # fast suite: fakes for Kokoro, MiniLM and Groq
 .venv\Scripts\python -m pytest -q -m slow  # loads the real Kokoro and MiniLM models
-.venv\Scripts\python -m pytest -q -m groq  # one live Groq call; skipped without a key
+.venv\Scripts\python -m pytest -q -m groq  # live Groq calls (summary, Q&A); skipped without a key
 ```
 
 ## Measurements
@@ -59,6 +60,21 @@ Excerpt selection, even spacing vs. MMR (`scratch/excerpt_selection_eval.py`, 15
 (mean similarity of each chunk to its closest excerpt 0.810, against 0.699–0.811 for MMR with
 λ = 0.3–0.9). MMR only spends less of the budget on the reference list (10–12% against 19%)
 by weighting relevance heavily, which costs coverage. Even spacing is shipped.
+
+### Questions with citations (Day 13): `scratch/qa_eval.py`
+
+The Day 11 question set (10 questions per document, hand-labelled answer sentences) asked
+through the real pipeline: MiniLM retrieval (top 5 chunks), the 0.22 threshold, then
+`openai/gpt-oss-120b` with `reasoning_effort="low"`. A citation hit means the answer cites
+a labelled answer sentence.
+
+| | sample.pdf (3 pages) | attention.pdf (15 pages) |
+|---|---|---|
+| Citation hit rate | _pending_ / 10 | _pending_ / 10 |
+| Answer sentence among those sent (the ceiling for the above) | 9 / 10 | 7 / 10 |
+| Off-topic questions refused, and Groq calls spent on them | 3 / 3, 0 calls | 3 / 3, 0 calls |
+| On-topic questions wrongly refused by the threshold | 0 / 10 | 0 / 10 |
+| Average answer latency | _pending_ | _pending_ |
 
 ### Earlier days
 

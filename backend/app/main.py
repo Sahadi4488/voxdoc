@@ -9,11 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
-from app.routers import documents, summaries, tts
+from app.routers import documents, qa, summaries, tts
 from app.services import splitter
 from app.services.embeddings import get_embedder
 from app.services.llm import LLMBusy, LLMError
 from app.services.tts_engine import get_tts_engine
+from app.utils.rate_limit import RateLimited
 
 # uvicorn configures only its own loggers: without a handler here, the app's
 # INFO lines (Groq token usage per call) would be dropped.
@@ -68,7 +69,15 @@ async def llm_error(request: Request, exc: LLMError):
     return JSONResponse({"detail": exc.public_message}, exc.status_code, headers=headers)
 
 
+@app.exception_handler(RateLimited)
+async def rate_limited(request: Request, exc: RateLimited):
+    # "code" tells the UI this 429 is the visitor's own limit, not a busy Groq
+    return JSONResponse({"detail": exc.message, "code": "rate_limited"}, 429,
+                        headers={"Retry-After": str(exc.retry_after)})
+
+
 app.include_router(documents.router)
+app.include_router(qa.router)
 app.include_router(summaries.router)
 app.include_router(tts.router)
 # config.py creates this folder: StaticFiles checks it here, at import time

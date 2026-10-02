@@ -31,7 +31,7 @@ export default function PlayerBar({ ref, player, sentenceCount, voicePicker, not
   const slow = loading && slowIdx === currentIdx
 
   return (
-    <div ref={ref} className="fixed inset-x-0 bottom-0 border-t border-rule bg-paper">
+    <div ref={ref} data-player-bar className="fixed inset-x-0 bottom-0 border-t border-rule bg-paper">
       <div className="mx-auto flex max-w-[40rem] flex-wrap items-center gap-x-4 gap-y-1 px-6 py-3">
         <div className="flex items-center gap-1">
           <button
