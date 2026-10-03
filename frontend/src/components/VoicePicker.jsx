@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { audioUrl, getTts } from '../api'
+import { getTts } from '../api'
 import { isUnlockClip, unlockAudio } from '../lib/audio'
 import { formatSpeed, MAX_SPEED, MIN_SPEED, roundSpeed, SPEED_STEP } from '../lib/prefs'
 
@@ -72,7 +72,7 @@ export default function VoicePicker({ voices, voiceId, speed, onVoiceChange, onS
     try {
       const clip = await getTts({ docId, idx: currentIdx, voice: voice.id, speed: draft })
       if (token !== previewTokenRef.current) return
-      audio.src = audioUrl(clip.audio_url)
+      audio.src = clip.audio_url
       await audio.play()
       if (token === previewTokenRef.current) setPreviewing({ id: voice.id, status: 'playing' })
     } catch (err) {

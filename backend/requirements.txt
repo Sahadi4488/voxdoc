@@ -1,17 +1,18 @@
-# CPU-only PyTorch: install first with
-#   pip install torch --index-url https://download.pytorch.org/whl/cpu
-torch==2.14.1
+# Runtime dependencies: top-level only, pinned, written by hand. Not `pip freeze`:
+# on Windows it can list packages that don't exist on Linux.
+#
+# torch is NOT here. Install the CPU build first, from its own index: the default
+# Linux wheel bundles CUDA, gigabytes a CPU-only app never uses.
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+# Then kokoro and sentence-transformers find torch already installed.
 kokoro==0.9.4
 soundfile==0.14.0
 fastapi[standard]==0.142.2  # includes uvicorn, python-multipart, the `fastapi dev` CLI
 pydantic-settings==2.15.0
-sentence-transformers==6.1.0  # MiniLM embeddings for retrieval; keep torch the CPU build
+sentence-transformers==6.1.0  # MiniLM embeddings for retrieval
 groq==1.7.0  # summaries and Q&A (gpt-oss on Groq's free plan)
 pdfplumber==0.11.10
 python-docx==1.2.0
-# spaCy model used by the sentence splitter (Kokoro would otherwise download it on first use)
+# spaCy model used by the sentence splitter and Kokoro's G2P; pinned as a wheel, so
+# builds are reproducible (`spacy download` would pick whatever is current)
 en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
-
-# Dev / tests
-pytest
-reportlab==5.0.1  # only for tests/fixtures/make_fixtures.py

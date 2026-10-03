@@ -26,7 +26,7 @@ sys.path.insert(0, str(BACKEND))
 
 from app.config import settings  # noqa: E402
 
-API = "http://127.0.0.1:8001"
+API = "http://127.0.0.1:8001/api"  # Day 14: every route is under /api
 DOCS = ["scratch/out/attention.pdf", "tests/fixtures/sample.pdf", "tests/fixtures/sample.docx"]
 ESTIMATE = re.compile(r"summarizing document \d+: (\w+) text, ~(\d+) prompt tokens estimated")
 USAGE = re.compile(r"groq (\S+): (\d+) prompt \+ (\d+) completion tokens(?: \((\d+) reasoning\))?, ([\d.]+) s")

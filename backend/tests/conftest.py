@@ -43,6 +43,8 @@ def isolated_data(tmp_path, monkeypatch):
 class FakeEngine:
     """Stands in for Kokoro: 1 s of silence + two word timings. Records every call."""
 
+    loaded = False  # what GET /api/health reports
+
     def __init__(self, delay: float = 0.0):
         self.calls: list[tuple[str, str, float]] = []
         self.delay = delay
@@ -147,7 +149,7 @@ def client(fake_engine, fake_embedder, fake_groq):
 
 def upload(client, path=None, name=None, content=None):
     data = content if content is not None else Path(path).read_bytes()
-    return client.post("/documents", files={"file": (name or Path(path).name, data, "application/octet-stream")})
+    return client.post("/api/documents", files={"file": (name or Path(path).name, data, "application/octet-stream")})
 
 
 @pytest.fixture()

@@ -28,9 +28,9 @@ def test_upload_docx_and_fetch(client, tmp_path):
     body = r.json()
     assert body["title"] == "sample" and body["filename"] == "sample.docx"
     assert body["sentence_count"] == 17  # same as scratch/split_demo.py
-    assert len(uploads(tmp_path)) == 1
+    assert uploads(tmp_path) == []  # the original is deleted once its text is extracted
 
-    detail = client.get(f"/documents/{body['id']}").json()
+    detail = client.get(f"/api/documents/{body['id']}").json()
     assert [s["idx"] for s in detail["sentences"]] == list(range(17))
     assert {s["page"] for s in detail["sentences"]} == {None}
     assert detail["sentences"][0]["para"] == 0 and detail["sentences"][-1]["para"] > 0
@@ -39,7 +39,7 @@ def test_upload_docx_and_fetch(client, tmp_path):
 def test_upload_pdf_pages(client):
     r = upload(client, FIXTURES / "sample.pdf")
     assert r.status_code == 201, r.text
-    sents = client.get(f"/documents/{r.json()['id']}").json()["sentences"]
+    sents = client.get(f"/api/documents/{r.json()['id']}").json()["sentences"]
     assert len(sents) == 39
     s = next(s for s in sents if "needs for highlighting" in s["text"])
     assert s["page"] == 1
@@ -51,18 +51,21 @@ def test_public_ids_are_unguessable(client):
     assert len(set(ids)) == 3
     assert all(isinstance(i, str) and len(i) >= 11 and not i.isdigit() for i in ids)
     for internal in ("1", "2", "3"):  # counting doesn't reach anyone's documents
-        assert client.get(f"/documents/{internal}").status_code == 404
+        assert client.get(f"/api/documents/{internal}").status_code == 404
 
 
 def test_no_public_document_list(client):
     upload(client, FIXTURES / "sample.docx")
-    assert client.get("/documents").status_code == 405  # POST only
+    # 405 (POST only), or 404 when the built frontend is mounted at /: that mount fully
+    # matches any path, so it answers before the partial match on the POST route
+    r = client.get("/api/documents")
+    assert r.status_code in (404, 405) and "sample" not in r.text
 
 
 def test_data_survives_restart(client):
     doc_id = upload(client, FIXTURES / "sample.docx").json()["id"]
     with TestClient(app) as again:  # new lifespan, same db_path
-        assert again.get(f"/documents/{doc_id}").status_code == 200
+        assert again.get(f"/api/documents/{doc_id}").status_code == 200
 
 
 @pytest.mark.parametrize("name,content,status", [
@@ -99,7 +102,7 @@ def test_path_traversal_filename_is_harmless(client, tmp_path):
     assert r.status_code == 201
     assert r.json()["filename"] == "evil.docx"
     assert not (tmp_path / "evil.docx").exists() and not (tmp_path.parent / "evil.docx").exists()
-    assert len(uploads(tmp_path)) == 1
+    assert uploads(tmp_path) == []  # the original is deleted once its text is extracted
 
 
 @pytest.mark.parametrize("cap,value,expected", [("max_pages", 2, "has 3 pages"), ("max_sentences", 10, "has 39 sentences")])
@@ -120,7 +123,7 @@ def test_db_failure_leaves_no_file(client, tmp_path, monkeypatch):
 
 
 def test_unknown_id_is_404(client):
-    r = client.get("/documents/not-a-real-id")
+    r = client.get("/api/documents/not-a-real-id")
     assert r.status_code == 404 and "Document not found" in r.json()["detail"]
 
 

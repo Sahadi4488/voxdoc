@@ -1,0 +1,26 @@
+# Keep the build context small, and secrets out of the image.
+# Without these lines Docker sends the multi-GB venv into every build,
+# and backend/.env (the Groq key) would be copied into the image.
+**/.env
+**/.env.*
+**/.venv
+**/node_modules
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+.git
+.github
+.gitattributes
+.gitignore
+.dockerignore
+Dockerfile
+
+# Runtime data and generated files
+backend/data
+**/audio_cache
+frontend/dist
+
+# Not needed to run the app
+backend/tests
+backend/scratch
+*.md

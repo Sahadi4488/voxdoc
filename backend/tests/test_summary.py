@@ -19,7 +19,7 @@ from tests.test_llm import REQUEST, status_error
 
 
 def summarize(client, doc_id):
-    return client.post(f"/documents/{doc_id}/summary")
+    return client.post(f"/api/documents/{doc_id}/summary")
 
 
 def prompt_of(fake, n=0):
@@ -68,7 +68,7 @@ def test_summary_is_generated_then_served_from_cache(client, docx_id, fake_groq)
 def test_short_document_sends_its_full_text_without_indexing(client, docx_id, fake_groq, fake_embedder):
     summarize(client, docx_id)
     prompt = prompt_of(fake_groq)
-    sentences = client.get(f"/documents/{docx_id}").json()["sentences"]
+    sentences = client.get(f"/api/documents/{docx_id}").json()["sentences"]
     assert all(s["text"] in prompt for s in sentences)
     assert "excerpts" not in prompt and GAP not in prompt
     assert fake_groq.requests[0]["model"] == settings.groq_summary_model
@@ -98,8 +98,8 @@ def test_no_key_returns_503_and_reading_still_works(client, docx_id, fake_embedd
         assert r.status_code == 503
         assert r.json() == {"detail": "AI features aren't configured on this server."}
     assert fake_embedder.document_calls == 0  # refused before any indexing work
-    assert client.get(f"/documents/{docx_id}").status_code == 200
-    tts = client.post("/tts", json={"doc_id": docx_id, "sentence_idx": 0, "voice": "presenter"})
+    assert client.get(f"/api/documents/{docx_id}").status_code == 200
+    tts = client.post("/api/tts", json={"doc_id": docx_id, "sentence_idx": 0, "voice": "presenter"})
     assert tts.status_code == 200
 
 
@@ -121,12 +121,6 @@ def test_rate_limit_returns_429_with_retry_after(client, docx_id, fake_groq):
     assert stored_summaries() == 0  # nothing cached: the next click tries again
     fake_groq.replies = [SUMMARY]
     assert summarize(client, docx_id).status_code == 200
-
-
-def test_retry_after_is_readable_cross_origin(client, docx_id, fake_groq):
-    fake_groq.replies = [status_error(groq.RateLimitError, 429, headers={"retry-after": "7"})]
-    r = client.post(f"/documents/{docx_id}/summary", headers={"Origin": "http://localhost:5173"})
-    assert "retry-after" in r.headers["access-control-expose-headers"].lower()
 
 
 def test_invalid_json_is_retried_once_then_a_clean_error(client, docx_id, fake_groq):

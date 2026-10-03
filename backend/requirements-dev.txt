@@ -1,0 +1,4 @@
+# Development and tests: the runtime set plus test tools (not in the Docker image)
+-r requirements.txt
+pytest==9.1.1
+reportlab==5.0.1  # only for tests/fixtures/make_fixtures.py

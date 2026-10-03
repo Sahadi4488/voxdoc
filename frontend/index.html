@@ -6,6 +6,19 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="VoxDoc reads PDF and Word documents aloud and highlights each word as it's spoken." />
     <title>VoxDoc</title>
+    <script>
+      // Before the first paint: the saved theme, or the system's. Same rule as
+      // src/lib/theme.js, so a dark page never flashes white while React loads.
+      ;(function () {
+        var theme
+        try {
+          theme = localStorage.getItem('voxdoc:theme')
+        } catch (e) {}
+        if (theme === 'dark' || (theme !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches)) {
+          document.documentElement.classList.add('dark')
+        }
+      })()
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link

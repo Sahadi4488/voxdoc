@@ -20,7 +20,7 @@ import httpx
 
 BACKEND = Path(__file__).resolve().parents[1]
 PDF = BACKEND / "scratch/out/attention.pdf"  # 15 pages, 431 sentences
-API = "http://127.0.0.1:8001"
+API = "http://127.0.0.1:8001/api"  # Day 14: every route is under /api
 TRIALS = 3
 SENTENCE = 9  # ~20-word sentence
 

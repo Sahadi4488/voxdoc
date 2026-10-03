@@ -7,12 +7,19 @@ Each entry is two files in the cache directory:
 The JSON is written last (both files via temp file + os.replace), so
 "JSON exists" means the entry is complete. A missing or unreadable JSON is a miss.
 
+The cache is capped (settings.audio_cache_max_mb): prune_cache() runs at
+startup and every PRUNE_EVERY writes and deletes the least recently used
+entries. A hit refreshes the sidecar's modification time, so "oldest mtime"
+means "least recently used".
+
 No kokoro/torch imports here: audio arrives as a NumPy array.
 """
 import hashlib
 import json
 import os
 import re
+import threading
+import time
 import unicodedata
 import uuid
 from collections.abc import Mapping
@@ -28,6 +35,13 @@ SAMPLE_RATE = 24000
 # captured at import) so tests can point it at a temp folder.
 
 _KEY_RE = re.compile(r"^[0-9a-f]{64}$")
+
+PRUNE_EVERY = 50  # writes between automatic prunes
+PRUNE_TO = 0.8  # prune down to 80% of the cap, so the next write doesn't prune again
+STALE_TMP_S = 3600  # a temp file this old belongs to a write that crashed
+
+_writes = 0
+_writes_lock = threading.Lock()
 
 
 def normalize_text(text: str) -> str:
@@ -85,6 +99,10 @@ def get(key: str, cache_dir: Path | None = None) -> tuple[Path, list[dict]] | No
         or not wav_path.exists()
     ):
         return None
+    try:
+        os.utime(json_path)  # recently used: pruning removes the least recently used first
+    except OSError:
+        pass
     return wav_path, sidecar["timings"]
 
 
@@ -107,4 +125,59 @@ def put(key: str, audio, timings: list[dict], cache_dir: Path | None = None) -> 
         os.replace(tmp, json_path)  # entry is complete only once this lands
     finally:
         tmp.unlink(missing_ok=True)
+    _count_write(cache_dir)
     return wav_path
+
+
+def _count_write(cache_dir: Path | None) -> None:
+    global _writes
+    with _writes_lock:
+        _writes += 1
+        due = _writes % PRUNE_EVERY == 0
+    if due:
+        prune_cache(settings.audio_cache_max_bytes, cache_dir)
+
+
+def prune_cache(max_bytes: int, cache_dir: Path | None = None) -> int:
+    """If the cache is over max_bytes, delete the least recently used entries until
+    it's under PRUNE_TO of it. Returns the bytes freed.
+
+    Each entry's sidecar goes BEFORE its WAV: "JSON exists" means "complete", so a
+    sidecar left without its WAV would be served as a hit, and the audio would 404.
+    A WAV without a sidecar (a write that crashed) is garbage and goes first.
+    """
+    d = Path(cache_dir) if cache_dir else settings.audio_cache_dir
+    if not d.is_dir():
+        return 0
+    entries: dict[str, list] = {}  # key -> [last used or None, size, files]
+    total = 0
+    now = time.time()
+    for f in d.iterdir():
+        try:
+            st = f.stat()
+        except OSError:
+            continue  # deleted meanwhile
+        if not f.is_file():
+            continue
+        total += st.st_size
+        if f.name.startswith("."):  # a write in progress (".<key>.<uuid>.tmp")
+            if now - st.st_mtime > STALE_TMP_S:
+                f.unlink(missing_ok=True)
+            continue
+        entry = entries.setdefault(f.stem, [None, 0, []])
+        entry[1] += st.st_size
+        entry[2].append(f)
+        if f.suffix == ".json":
+            entry[0] = st.st_mtime
+    if total <= max_bytes:
+        return 0
+
+    freed = 0
+    # Entries without a sidecar first, then by last use, oldest first
+    for _, size, files in sorted(entries.values(), key=lambda e: (e[0] is not None, e[0] or 0)):
+        if total - freed <= max_bytes * PRUNE_TO:
+            break
+        for f in sorted(files, key=lambda f: f.suffix != ".json"):  # the sidecar first
+            f.unlink(missing_ok=True)
+        freed += size
+    return freed

@@ -21,7 +21,7 @@ US_GROWTH = "How much did the U.S. grow in 2024?"  # sentence 4 of sample.docx: 
 
 
 def ask(client, doc_id, question=US_GROWTH):
-    return client.post(f"/documents/{doc_id}/ask", json={"question": question})
+    return client.post(f"/api/documents/{doc_id}/ask", json={"question": question})
 
 
 def answer(text, found=True):

@@ -14,16 +14,21 @@ to the cited sentence (gpt-oss on Groq). Runs on a CPU-only laptop.
 cd backend
 uv python install 3.11          # if Python 3.11 isn't installed
 uv venv --seed --python 3.11 .venv
-.venv\Scripts\python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
-.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
+.venv\Scripts\python -m pip install -r requirements-dev.txt   # requirements.txt + test tools
 copy .env.example .env          # then paste your Groq key into .env (optional)
-.venv\Scripts\fastapi dev app/main.py    # http://127.0.0.1:8000/docs
+.venv\Scripts\fastapi dev app/main.py    # API on http://127.0.0.1:8000/api (docs: /docs)
 
 # Frontend, in a second terminal
 cd frontend
 npm install
-npm run dev                     # http://localhost:5173
+npm run dev                     # http://localhost:5173; Vite proxies /api to the backend
 ```
+
+**One origin, no CORS.** The frontend only ever calls `/api/...` on its own origin. In
+development Vite's proxy forwards those calls to FastAPI; in production FastAPI serves the
+built app itself (`npm run build`; `frontend/dist` is mounted at `/`, after the API). The
+backend has no CORS middleware at all.
 
 **Configuration** comes from environment variables or `backend/.env` (git-ignored), all
 prefixed `VOXDOC_`; see `backend/.env.example` and `backend/app/config.py`. Without
@@ -37,6 +42,57 @@ questions answer 503 "AI features aren't configured on this server".
 .venv\Scripts\python -m pytest -q -m slow  # loads the real Kokoro and MiniLM models
 .venv\Scripts\python -m pytest -q -m groq  # live Groq calls (summary, Q&A); skipped without a key
 ```
+
+## Docker
+
+One image serves the API and the built app on port 7860. The `Dockerfile` has two
+stages: Node builds the frontend, then `python:3.11-slim` gets CPU-only torch, espeak-ng,
+the requirements, and the Kokoro + MiniLM weights, downloaded at build time by
+`backend/scripts/prefetch_models.py`. The container then runs with `HF_HUB_OFFLINE=1`.
+
+```powershell
+docker build -t voxdoc .
+docker run --rm -p 7860:7860 --env-file backend/.env voxdoc   # http://localhost:7860
+docker run --rm voxdoc ls -a                                  # must not list a .env
+```
+
+No Docker locally? `.github/workflows/docker.yml` builds and checks the image on GitHub
+on every push: no `.env` in the image, cold start, the full flow
+(`backend/scripts/container_check.py`), image size and peak RAM, on the run's summary page.
+
+## Publishing
+
+Pick the host from the measured peak RAM (below). Either way the Groq key is a runtime
+secret named `VOXDOC_GROQ_API_KEY`, never part of the image.
+
+**Hugging Face Spaces (PRO, Docker SDK, CPU basic, public)**
+1. Put this front matter at the very top of `README.md` (GitHub shows it as a small table):
+   ```yaml
+   ---
+   title: VoxDoc
+   sdk: docker
+   app_port: 7860
+   ---
+   ```
+2. In the Space's settings, add the secret `VOXDOC_GROQ_API_KEY`.
+3. `git remote add space https://huggingface.co/spaces/<you>/voxdoc`, then
+   `git push space master:main` (a write token as the password).
+4. Watch the Logs tab, then open `https://<you>-voxdoc.hf.space`. The disk resets when the
+   Space restarts, and it sleeps after 48 hours without visitors.
+
+**A VM (student credits)**
+1. Ubuntu, with at least the measured peak RAM + 1 GB; `curl -fsSL https://get.docker.com | sh`.
+2. Clone the repo, create `.env` on the server, `docker build -t voxdoc .`
+3. Run it bound to localhost only, with the data on a volume:
+   ```bash
+   docker run -d --restart unless-stopped -p 127.0.0.1:7860:7860 \
+     -v voxdoc-data:/home/user/app/data --env-file .env voxdoc
+   ```
+4. Caddy for HTTPS; Caddyfile: `your.domain { reverse_proxy 127.0.0.1:7860 }` (a free
+   DuckDNS subdomain works). The container trusts X-Forwarded-For only because nothing
+   but Caddy can reach it.
+5. Firewall: allow 22, 80 and 443 only. Documents now survive restarts, so the audio
+   cache cap matters (`VOXDOC_AUDIO_CACHE_MAX_MB`, default 2048).
 
 ## Measurements
 
@@ -75,6 +131,15 @@ a labelled answer sentence.
 | Off-topic questions refused, and Groq calls spent on them | 3 / 3, 0 calls | 3 / 3, 0 calls |
 | On-topic questions wrongly refused by the threshold | 0 / 10 | 0 / 10 |
 | Average answer latency | _pending_ | _pending_ |
+
+### Production build (Day 14)
+
+| | Container (`docker.yml` on GitHub) | This laptop, same setup without Docker (`scratch/measure_production.py`) |
+|---|---|---|
+| Image size | _pending_ | — |
+| Cold start (start until `/api/health` answers, Kokoro loaded) | _pending_ | 11.2 s |
+| Time to first audio (request until the WAV is downloaded) | _pending_ | 1.5 s |
+| Peak RAM (Kokoro; MiniLM adds ~0.3 GB once a question is asked) | _pending_ | 1.63 GB |
 
 ### Earlier days
 

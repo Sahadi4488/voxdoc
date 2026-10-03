@@ -21,11 +21,13 @@ class Settings(BaseSettings):
     upload_dir: Path | None = None  # default: data_dir/uploads
     audio_cache_dir: Path | None = None  # default: data_dir/audio_cache
     max_upload_mb: int = 20
+    # Disk cap for synthesized audio: past it, the least recently used entries go (down to 80%)
+    audio_cache_max_mb: int = 2048
+    # The built React app (npm run build), served at / when the folder exists
+    frontend_dist: Path = BACKEND_DIR.parent / "frontend" / "dist"
     # Caps so one upload can't occupy the CPU for an hour on a public server
     max_pages: int = 150
     max_sentences: int = 3000
-    # Vite dev server; the browser treats localhost and 127.0.0.1 as different origins
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
     # Load Kokoro at startup instead of on the first /tts request. Off by default:
     # `fastapi dev` reloads on every save and would reload the model each time.
     warm_tts: bool = False
@@ -65,6 +67,7 @@ class Settings(BaseSettings):
         self.db_path = _anchor(self.db_path or self.data_dir / "voxdoc.db")
         self.upload_dir = _anchor(self.upload_dir or self.data_dir / "uploads")
         self.audio_cache_dir = _anchor(self.audio_cache_dir or self.data_dir / "audio_cache")
+        self.frontend_dist = _anchor(self.frontend_dist)
         # Must exist before app.main is imported: StaticFiles checks its
         # directory at mount time, before lifespan runs.
         self.audio_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +76,10 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def audio_cache_max_bytes(self) -> int:
+        return self.audio_cache_max_mb * 1024 * 1024
 
 
 def _anchor(p: Path) -> Path:

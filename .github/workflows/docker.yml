@@ -1,0 +1,65 @@
+# Builds the Docker image and checks it on GitHub's machines, with nothing installed
+# locally. Runs on every push, or by hand: Actions tab -> "Docker image" -> Run workflow.
+# The measurements appear on the run's summary page.
+# Optional: add a repository secret VOXDOC_GROQ_API_KEY to check summaries and
+# questions too; without it they're checked to answer 503.
+name: Docker image
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: |
+          start=$(date +%s)
+          docker build -t voxdoc .
+          echo "| Build time | $(( $(date +%s) - start )) s |" >> metrics.md
+
+      - name: Image size
+        run: |
+          docker images voxdoc
+          echo "| Image size | $(docker images voxdoc --format '{{.Size}}') |" >> metrics.md
+
+      - name: The image contains no .env
+        run: |
+          docker run --rm voxdoc ls -a
+          found=$(docker run --rm voxdoc sh -c 'find / -xdev \( -name ".env" -o -name ".env.*" \) 2>/dev/null' || true)
+          if [ -n "$found" ]; then echo "Secrets file in the image: $found"; exit 1; fi
+
+      - name: Cold start (docker run until /api/health answers)
+        env:
+          VOXDOC_GROQ_API_KEY: ${{ secrets.VOXDOC_GROQ_API_KEY }}
+        run: |
+          start=$(date +%s.%N)
+          docker run -d --name voxdoc -p 7860:7860 -e VOXDOC_GROQ_API_KEY voxdoc
+          for i in $(seq 1 600); do
+            curl -sf http://localhost:7860/api/health > /dev/null && break
+            sleep 0.2
+          done
+          cold=$(echo "$(date +%s.%N) - $start" | bc)
+          curl -sf http://localhost:7860/api/health
+          echo "| Cold start | ${cold} s |" >> metrics.md
+
+      - name: Full flow (upload, audio, summary, question)
+        run: |
+          python3 backend/scripts/container_check.py http://localhost:7860 | tee check.txt
+          tail -1 check.txt | python3 -c "import json,sys; [print(f'| {k} | {v} s |') for k, v in json.load(sys.stdin).items()]" >> metrics.md
+
+      - name: Peak RAM
+        run: |
+          docker stats --no-stream voxdoc
+          peak=$(docker exec voxdoc cat /sys/fs/cgroup/memory.peak 2>/dev/null || echo 0)
+          echo "| Peak RAM | $(echo "scale=2; $peak / 1073741824" | bc) GB |" >> metrics.md
+
+      - name: Summary
+        if: always()
+        run: |
+          { echo "### VoxDoc image"; echo "| Measurement | Value |"; echo "|---|---|"; cat metrics.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
+          docker logs voxdoc 2>&1 | tail -50 || true

@@ -14,10 +14,10 @@ import soundfile as sf
 from app.services import audio_cache
 from app.services.audio_cache import SAMPLE_RATE, cache_key, normalize_text
 from app.services.timings import align, timings_from_results
-from app.services.voices import lang_code_for
+from app.services.voices import KOKORO_REPO, lang_code_for
 from app.utils.locks import KeyedLock
 
-REPO_ID = "hexgrad/Kokoro-82M"
+REPO_ID = KOKORO_REPO
 
 
 class SynthesisError(RuntimeError):
@@ -53,12 +53,17 @@ class TTSEngine:
     def warm_up(self) -> None:
         self.pipeline("a")
 
+    @property
+    def loaded(self) -> bool:
+        """Whether Kokoro is in memory (GET /api/health reports it; it never loads it)."""
+        return self._model is not None
+
     def synthesize(self, text: str, kokoro_voice: str, speed: float) -> tuple[np.ndarray, list[dict]]:
         """-> (float32 audio at 24 kHz, word timings offset across Kokoro's chunks and
         aligned to character offsets in `text`, which is what the frontend displays)."""
         pipe = self.pipeline(lang_code_for(kokoro_voice))
         with self._synth_lock:
-            results =[r for r in pipe(normalize_text(text), voice=kokoro_voice, speed=speed) if r.audio is not None]
+            results = [r for r in pipe(normalize_text(text), voice=kokoro_voice, speed=speed) if r.audio is not None]
         if not results:
             raise SynthesisError(f"No audio produced for {text!r}.")
         audio = np.concatenate([r.audio.cpu().numpy() for r in results]).astype(np.float32)
@@ -106,4 +111,8 @@ def _cached(key: str) -> AudioResult | None:
     if entry is None:
         return None
     wav_path, timings = entry
-    return AudioResult(key, wav_path, timings, sf.info(str(wav_path)).duration, cached=True)
+    try:
+        duration = sf.info(str(wav_path)).duration
+    except (OSError, RuntimeError):  # pruned between get() and here (soundfile raises RuntimeError)
+        return None
+    return AudioResult(key, wav_path, timings, duration, cached=True)

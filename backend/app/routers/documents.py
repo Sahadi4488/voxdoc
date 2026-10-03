@@ -64,9 +64,10 @@ def upload_document(file: UploadFile, background_tasks: BackgroundTasks,
             raise HTTPException(413, f"This document has {len(sentences)} sentences. "
                                      f"VoxDoc reads up to {settings.max_sentences}.")
         public_id = db.insert_document(conn, Path(filename).stem or "Untitled", filename, stored_name, sentences)
-    except BaseException:
-        stored.unlink(missing_ok=True)  # no orphan files; the DB transaction already rolled back
-        raise
+    finally:
+        # VoxDoc keeps the extracted text, never the visitor's file (privacy, and disk on
+        # a small host): it's deleted on success too. Nothing reads it after extraction.
+        stored.unlink(missing_ok=True)
     if settings.index_on_upload:
         # Runs after the response is sent; retrieval re-checks, so a failure here self-heals
         background_tasks.add_task(index_document, public_id, embedder)

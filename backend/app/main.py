@@ -1,19 +1,24 @@
-"""VoxDoc API.  Run from backend/ (or anywhere):  fastapi dev app/main.py"""
+"""VoxDoc API + the built frontend, on one origin.
+
+Development:  fastapi dev app/main.py  (from backend/), with `npm run dev`, whose
+              proxy sends /api to this server: same origin, so no CORS anywhere.
+Production:   uvicorn app.main:app  serves /api/... and the built React app at /.
+"""
 import logging
+import mimetypes
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
 from app.db import init_db
 from app.routers import documents, qa, summaries, tts
-from app.services import splitter
+from app.services import audio_cache, splitter
 from app.services.embeddings import get_embedder
-from app.services.llm import LLMBusy, LLMError
-from app.services.tts_engine import get_tts_engine
+from app.services.llm import LLMBusy, LLMClient, LLMError, get_llm_client
+from app.services.tts_engine import TTSEngine, get_tts_engine
 from app.utils.rate_limit import RateLimited
 
 # uvicorn configures only its own loggers: without a handler here, the app's
@@ -26,27 +31,39 @@ if not _app_log.handlers:
     _app_log.setLevel(logging.INFO)
 log = logging.getLogger(__name__)
 
+# StaticFiles guesses types with `mimetypes`, which on Windows reads the registry,
+# where .js is often text/plain. Browsers refuse to run a module script served
+# that way, so the built app would be a blank page. Register them explicitly.
+mimetypes.add_type("text/javascript", ".js")
+mimetypes.add_type("text/css", ".css")
+mimetypes.add_type("image/svg+xml", ".svg")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    _remove_leftover_uploads()
+    freed = audio_cache.prune_cache(settings.audio_cache_max_bytes)
+    if freed:
+        log.info("audio cache over its cap: removed %.1f MB of the oldest entries", freed / 2**20)
     splitter.warm_up()  # load spaCy now so the first upload isn't 3 s slower
-    if settings.warm_tts:  # off by default: Kokoro takes seconds to load on every dev reload
+    if settings.warm_tts:  # on in the container; off in dev, where every reload would reload Kokoro
         get_tts_engine().warm_up()
     if settings.warm_embedder:
         get_embedder().warm_up()
     yield
 
 
-app = FastAPI(title="VoxDoc", lifespan=lifespan)
+def _remove_leftover_uploads() -> None:
+    """Uploads are deleted as soon as they're extracted; anything still there was
+    left by a crash mid-upload (or by a version that kept the originals)."""
+    if settings.upload_dir.is_dir():
+        for f in settings.upload_dir.iterdir():
+            if f.is_file():
+                f.unlink(missing_ok=True)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Retry-After"],  # cross-origin JS can't read it otherwise (the dev server)
-)
+
+app = FastAPI(title="VoxDoc", lifespan=lifespan)
 
 MULTIPART_OVERHEAD = 64 * 1024
 
@@ -76,14 +93,24 @@ async def rate_limited(request: Request, exc: RateLimited):
                         headers={"Retry-After": str(exc.retry_after)})
 
 
-app.include_router(documents.router)
-app.include_router(qa.router)
-app.include_router(summaries.router)
-app.include_router(tts.router)
+api = APIRouter(prefix="/api")
+
+
+@api.get("/health", tags=["meta"])
+def health(engine: TTSEngine = Depends(get_tts_engine), llm: LLMClient = Depends(get_llm_client)):
+    """Liveness for the host and the cold-start measurement. Never loads a model:
+    it only reports whether Kokoro is loaded yet."""
+    return {"status": "ok", "tts_loaded": engine.loaded, "ai_configured": llm.configured}
+
+
+for router in (documents.router, qa.router, summaries.router, tts.router):
+    api.include_router(router)
+app.include_router(api)
 # config.py creates this folder: StaticFiles checks it here, at import time
-app.mount("/audio", StaticFiles(directory=settings.audio_cache_dir), name="audio")
+app.mount("/api/audio", StaticFiles(directory=settings.audio_cache_dir), name="audio")
 
-
-@app.get("/health", tags=["meta"])
-def health():
-    return {"status": "ok"}
+# The built React app, mounted LAST: a mount at "/" matches every path, so placed
+# before the API it would answer /api/... with 404s. Only when a build exists, so
+# development without `npm run build` keeps working (Vite serves the frontend then).
+if settings.frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="spa")

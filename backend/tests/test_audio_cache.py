@@ -1,8 +1,10 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
+from app.config import settings
 from app.services import audio_cache
 from app.services.audio_cache import cache_key, canonical_voice
 from app.services.timings import timings_from_results
@@ -100,3 +102,81 @@ def test_timings_consecutive_untimed_words():
 def test_timings_trailing_opening_punctuation_not_lost():
     r = SimpleNamespace(audio=np.zeros(2400), tokens=[_tok("Hi", 0.0, 0.1), _tok("(", None, None, "")])
     assert timings_from_results([r]) == [{"word": "Hi (", "start": 0.0, "end": 0.1}]
+
+
+# --------------------------------------------------------------------------- cache cap (Day 14)
+
+def _entry(cache_dir, name, age_s, now=1_700_000_000.0):
+    """A complete entry (WAV + sidecar) last used `age_s` seconds before `now`."""
+    import os
+    key = cache_key(name, "af_heart", 1.0)
+    audio_cache.put(key, np.zeros(24000, dtype=np.float32), [], cache_dir=cache_dir)  # ~47 KB WAV
+    for suffix in (".wav", ".json"):
+        os.utime(cache_dir / f"{key}{suffix}", (now - age_s, now - age_s))
+    return key
+
+
+def _size(cache_dir):
+    return sum(f.stat().st_size for f in cache_dir.iterdir())
+
+
+def test_prune_does_nothing_under_the_cap(tmp_path):
+    keys = [_entry(tmp_path, f"s{i}", age_s=i) for i in range(3)]
+    assert audio_cache.prune_cache(10 * 2**20, tmp_path) == 0
+    assert all(audio_cache.get(k, tmp_path) for k in keys)
+
+
+def test_prune_removes_the_oldest_until_under_80_percent(tmp_path):
+    keys = [_entry(tmp_path, f"s{i}", age_s=100 - i) for i in range(10)]  # keys[0] is the oldest
+    total = _size(tmp_path)
+    cap = total * 0.75
+    freed = audio_cache.prune_cache(int(cap), tmp_path)
+    assert freed > 0 and _size(tmp_path) <= cap * 0.8 and _size(tmp_path) == total - freed
+    kept = [k for k in keys if (tmp_path / f"{k}.json").exists()]
+    assert kept == keys[-len(kept):]  # the newest survive, in order
+    assert all((tmp_path / f"{k}.wav").exists() for k in kept)
+
+
+def test_prune_deletes_the_sidecar_before_the_wav(tmp_path, monkeypatch):
+    _entry(tmp_path, "old", age_s=100)
+    order = []
+    real_unlink = Path.unlink
+    monkeypatch.setattr(Path, "unlink", lambda self, missing_ok=False: (order.append(self.suffix), real_unlink(self, missing_ok=missing_ok)))
+    audio_cache.prune_cache(0, tmp_path)
+    assert order == [".json", ".wav"]  # never a sidecar without its WAV, which would be a "hit" that 404s
+
+
+def test_a_hit_counts_as_recent_use(tmp_path):
+    used = _entry(tmp_path, "old but just played", age_s=1000)
+    unused = _entry(tmp_path, "newer, never played again", age_s=10)
+    assert audio_cache.get(used, tmp_path)  # refreshes its mtime to now
+    audio_cache.prune_cache(int(_size(tmp_path) * 0.7), tmp_path)  # 80% of the cap: room for one entry
+    assert audio_cache.get(used, tmp_path) and not audio_cache.get(unused, tmp_path)
+
+
+def test_wav_without_sidecar_goes_first(tmp_path):
+    complete = _entry(tmp_path, "complete", age_s=1000)
+    orphan = _entry(tmp_path, "crashed write", age_s=1)
+    (tmp_path / f"{orphan}.json").unlink()
+    audio_cache.prune_cache(int(_size(tmp_path) * 0.9), tmp_path)
+    assert not (tmp_path / f"{orphan}.wav").exists() and audio_cache.get(complete, tmp_path)
+
+
+def test_stale_temp_files_are_removed_fresh_ones_kept(tmp_path):
+    import os
+    import time
+    stale, fresh = tmp_path / ".abc.1.tmp", tmp_path / ".abc.2.tmp"
+    stale.write_bytes(b"x" * 1000)
+    fresh.write_bytes(b"x" * 1000)
+    os.utime(stale, (time.time() - 7200, time.time() - 7200))
+    audio_cache.prune_cache(0, tmp_path)
+    assert not stale.exists() and fresh.exists()  # a write may be in progress
+
+
+def test_prune_runs_every_50_writes(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(audio_cache, "_writes", 0)
+    monkeypatch.setattr(audio_cache, "prune_cache", lambda max_bytes, cache_dir=None: calls.append(max_bytes))
+    for i in range(120):
+        audio_cache.put(cache_key(f"s{i}", "af_heart", 1.0), np.zeros(10, dtype=np.float32), [], cache_dir=tmp_path)
+    assert calls == [settings.audio_cache_max_bytes] * 2

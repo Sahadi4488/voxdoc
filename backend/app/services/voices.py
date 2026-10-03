@@ -6,6 +6,8 @@ the TTS model.
 """
 from dataclasses import asdict, dataclass
 
+KOKORO_REPO = "hexgrad/Kokoro-82M"  # the model and voice files on Hugging Face
+
 MIN_SPEED = 0.5
 MAX_SPEED = 2.0
 

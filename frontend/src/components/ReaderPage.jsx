@@ -17,7 +17,7 @@ const WIDE = '(min-width: 64rem)' // Tailwind's lg: the chat panel sits beside t
  * key={docId}, so opening another document unmounts this one: all state starts
  * over and the player's unmount cleanup stops its audio, by construction.
  */
-export default function ReaderPage({ docId }) {
+export default function ReaderPage({ docId, onExit }) {
   const { status, doc, error } = useDocument(docId)
   const { voices, error: voicesError } = useVoices()
   const [prefs, setVoice, setSpeed] = useVoicePrefs(docId, voices)
@@ -94,10 +94,16 @@ export default function ReaderPage({ docId }) {
 
   if (status === 'loading' || status === 'idle') return <p className="mt-10 text-graphite">Opening the document…</p>
   if (status === 'error') {
+    // e.g. "Document not found. Check the link, or upload the file again." plus the way back
     return (
-      <p className="mt-10 text-error" role="alert">
-        {error}
-      </p>
+      <div className="mt-10">
+        <p className="text-error" role="alert">
+          {error}
+        </p>
+        <button type="button" onClick={onExit} className={`mt-4 ${outlineButton}`}>
+          Upload a file
+        </button>
+      </div>
     )
   }
 

@@ -1,8 +1,9 @@
-// In dev, VITE_API_URL (.env.development) points at the FastAPI server.
-// Unset in production builds, so requests go to the same origin.
-export const API_URL = import.meta.env.VITE_API_URL ?? ''
+// Every call goes to /api on the page's own origin: FastAPI serves the built app in
+// production, and Vite's dev server proxies /api to FastAPI (vite.config.js). One
+// origin in both, so no CORS anywhere.
+const API = '/api'
 
-const NETWORK_ERROR = "Can't reach the VoxDoc server. Start the backend and try again."
+const NETWORK_ERROR = "Can't reach the VoxDoc server. Check your connection and try again."
 
 /** Upload a PDF/DOCX. Resolves to the stored document; throws Error with a readable message. */
 export async function uploadDocument(file) {
@@ -58,15 +59,10 @@ export async function askQuestion(docId, question, signal) {
   )
 }
 
-/** Absolute URL for an audio path returned by /tts (e.g. "/audio/<key>.wav"). */
-export function audioUrl(path) {
-  return `${API_URL}${path}`
-}
-
 async function request(path, options, failure) {
   let res
   try {
-    res = await fetch(`${API_URL}${path}`, options)
+    res = await fetch(`${API}${path}`, options)
   } catch (err) {
     if (err.name === 'AbortError') throw err // cancelled on purpose, not a failure
     // fetch only rejects on network failure (TypeError: Failed to fetch)

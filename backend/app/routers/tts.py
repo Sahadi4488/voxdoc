@@ -41,5 +41,5 @@ def tts(req: TTSRequest, conn: sqlite3.Connection = Depends(db.get_db),
         result = get_or_create_audio(engine, text, preset.voice, speed)
     except SynthesisError as e:
         raise HTTPException(422, str(e)) from None
-    return TTSResponse(audio_url=f"/audio/{result.key}.wav", timings=result.timings,
+    return TTSResponse(audio_url=f"/api/audio/{result.key}.wav", timings=result.timings,
                        duration=round(result.duration, 3), cached=result.cached)

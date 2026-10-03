@@ -8,11 +8,11 @@ from tests.conftest import FakeEngine
 
 
 def tts(client, doc_id, idx=0, voice="presenter", **extra):
-    return client.post("/tts", json={"doc_id": doc_id, "sentence_idx": idx, "voice": voice, **extra})
+    return client.post("/api/tts", json={"doc_id": doc_id, "sentence_idx": idx, "voice": voice, **extra})
 
 
 def test_voices_lists_seven_presets(client):
-    presets = client.get("/voices").json()
+    presets = client.get("/api/voices").json()
     assert len(presets) == 7
     assert {"presenter", "scholar"} <= {p["id"] for p in presets}
     assert [p["id"] for p in presets if p["is_default"]] == ["presenter"]
@@ -23,7 +23,7 @@ def test_tts_generates_then_hits_cache(client, docx_id, fake_engine, isolated_da
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["cached"] is False and body["duration"] == 1.0
-    assert re.fullmatch(r"/audio/[0-9a-f]{64}\.wav", body["audio_url"])
+    assert re.fullmatch(r"/api/audio/[0-9a-f]{64}\.wav", body["audio_url"])
     assert [t["word"] for t in body["timings"]] == ["Hello", "world."]
     key = body["audio_url"].rsplit("/", 1)[1]
     assert (isolated_data / "audio_cache" / key).exists()
@@ -65,7 +65,7 @@ def test_unknown_preset_422(client, docx_id):
 @pytest.mark.parametrize("payload", [{"speed": 3.0}, {"speed": 0.49}, {"sentence_idx": -1}])
 def test_invalid_request_422(client, docx_id, payload):
     body = {"doc_id": docx_id, "sentence_idx": 0, "voice": "presenter", **payload}
-    assert client.post("/tts", json=body).status_code == 422
+    assert client.post("/api/tts", json=body).status_code == 422
 
 
 def test_concurrent_requests_synthesize_once(isolated_data):

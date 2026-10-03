@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { audioUrl, getTts } from '../api'
+import { getTts } from '../api'
 import { isUnlockClip, unlockAudio } from '../lib/audio'
 
 /*
@@ -148,7 +148,7 @@ export function usePlayer({ docId, sentenceCount, voice, speed }) {
       if (token !== tokenRef.current) return // a newer jump won
 
       setClip({ ...data, words: usableWords(data, idx) })
-      audio.src = audioUrl(data.audio_url)
+      audio.src = data.audio_url // "/api/audio/<key>.wav", same origin
       try {
         await audio.play()
       } catch (err) {

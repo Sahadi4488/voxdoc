@@ -17,7 +17,9 @@ const Sentence = memo(function Sentence({ ref, idx, text, isActive, wordSync, wo
   const hasWord = isActive && wordStart !== null && wordEnd !== null
   // The highlighter means "the voice is here", at two levels of focus: the sentence
   // faintly and the word at full strength. Without word timings, the whole sentence.
-  const sentenceBg = isActive ? (wordSync ? 'bg-highlighter/35' : 'bg-highlighter') : ''
+  // Full strength always carries on-highlighter text (dark mode: light ink on yellow
+  // would be unreadable); the faint tint keeps the normal ink, which reads better on it.
+  const sentenceBg = isActive ? (wordSync ? 'bg-highlighter/35' : 'bg-highlighter text-on-highlighter') : ''
   return (
     <>
       <span
@@ -32,7 +34,7 @@ const Sentence = memo(function Sentence({ ref, idx, text, isActive, wordSync, wo
         {hasWord ? (
           <>
             {text.slice(0, wordStart)}
-            <mark className="rounded-sm bg-highlighter box-decoration-clone text-ink">{text.slice(wordStart, wordEnd)}</mark>
+            <mark className="rounded-sm bg-highlighter box-decoration-clone text-on-highlighter">{text.slice(wordStart, wordEnd)}</mark>
             {text.slice(wordEnd)}
           </>
         ) : (
@@ -60,6 +62,10 @@ export default function Reader({
   bottomInset = () => 0,
   header = null,
 }) {
+  // Dev only: ?crash makes this throw, to test the error boundary (stripped from builds)
+  if (import.meta.env.DEV && new URLSearchParams(window.location.search).has('crash')) {
+    throw new Error('Test crash (?crash)')
+  }
   const paragraphs = useMemo(() => {
     const groups = []
     for (const s of doc.sentences) {
