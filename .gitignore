@@ -4,7 +4,7 @@ __pycache__/
 *.pyc
 
 # Secrets: backend/.env holds the Groq API key. backend/.env.example is the
-# committed template; frontend/.env.development holds no secrets.
+# committed template, with placeholders only.
 .env
 .env.local
 .env.*.local

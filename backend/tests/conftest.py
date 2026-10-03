@@ -22,13 +22,23 @@ FIXTURES = Path(__file__).parent / "fixtures"
 REAL_GROQ_KEY = settings.groq_api_key
 
 
+def _audio_files():
+    """The /api/audio mount. StaticFiles fixes its folder at import time: the one place the
+    app doesn't read settings at call time."""
+    return next(r.app for r in app.routes if getattr(r, "name", None) == "audio")
+
+
 @pytest.fixture(autouse=True)
 def isolated_data(tmp_path, monkeypatch):
     """Every test gets its own database, uploads and audio cache; real data/ is never touched.
-    Works because the app reads settings.* at call time, never at import time."""
+    Works because the app reads settings.* at call time, never at import time, except for
+    the /api/audio mount, which is pointed at the test's cache here."""
     monkeypatch.setattr(settings, "db_path", tmp_path / "test.db")
     monkeypatch.setattr(settings, "upload_dir", tmp_path / "uploads")
     monkeypatch.setattr(settings, "audio_cache_dir", tmp_path / "audio_cache")
+    # Without this, GET /api/audio/... read the real data/audio_cache: a test passed only
+    # because a WAV with the same key happened to be there (a fresh clone has none)
+    monkeypatch.setattr(_audio_files(), "all_directories", [tmp_path / "audio_cache"])
     monkeypatch.setattr(settings, "warm_tts", False)
     monkeypatch.setattr(settings, "warm_embedder", False)
     # A key in backend/.env must never reach the tests: no test spends real quota by accident
