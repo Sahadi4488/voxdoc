@@ -7,7 +7,11 @@
 # Then kokoro and sentence-transformers find torch already installed.
 kokoro==0.9.4
 soundfile==0.14.0
-fastapi[standard]==0.142.2  # includes uvicorn, python-multipart, the `fastapi dev` CLI
+# FastAPI without the [standard] extra: that one also installs a cloud-deploy CLI, Sentry,
+# OpenTelemetry, Jinja2 and email-validator, none of which VoxDoc uses
+fastapi==0.142.2
+uvicorn[standard]==0.54.0  # the server; [standard] adds httptools and file watching for reload
+python-multipart==0.0.32  # parses file uploads (UploadFile)
 pydantic-settings==2.15.0
 sentence-transformers==6.1.0  # MiniLM embeddings for retrieval
 groq==1.7.0  # summaries and Q&A (gpt-oss on Groq's free plan)

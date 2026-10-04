@@ -1,4 +1,6 @@
-# Development and tests: the runtime set plus test tools (not in the Docker image)
+# Development and tests: the runtime set plus dev tools (not in the Docker image)
 -r requirements.txt
+fastapi-cli==0.0.32  # the `fastapi dev` command
+httpx==0.28.1  # FastAPI's TestClient and the scratch measurement scripts
 pytest==9.1.1
 reportlab==5.0.1  # only for tests/fixtures/make_fixtures.py
