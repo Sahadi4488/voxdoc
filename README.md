@@ -115,7 +115,7 @@ path the same way (for example to `C:\code`, giving `C:\code\voxdoc`), skip the
 Backend, in a first PowerShell window:
 
 ```powershell
-git clone https://github.com/<your-username>/voxdoc.git
+git clone https://github.com/Sahadi4488/voxdoc.git
 cd voxdoc\backend
 uv venv --seed --python 3.11 .venv
 .venv\Scripts\python -m pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cpu
