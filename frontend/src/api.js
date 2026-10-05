@@ -73,8 +73,7 @@ async function request(path, options, failure) {
     const err = new Error(message)
     err.status = res.status
     if (code) err.code = code // e.g. "rate_limited": the visitor's own limit, not a busy server
-    // Seconds to wait after a 429. Cross-origin (the dev server) JS can read it
-    // only because the backend lists it in CORS expose_headers.
+    // Seconds to wait after a 429 (same origin, so the header is readable)
     const retryAfter = Number.parseInt(res.headers.get('Retry-After'), 10)
     if (retryAfter > 0) err.retryAfter = retryAfter
     throw err

@@ -91,7 +91,7 @@ haven't been measured yet. Details and per-trial numbers: [docs/measurements.md]
 
 ## Tech stack
 
-- **Frontend:** React 19, Vite 8, Tailwind CSS 4; no component library.
+- **Frontend:** React 19 and Vite 8, plain CSS with design tokens (light and dark); no component library or CSS framework.
 - **API:** FastAPI on Python 3.11, pydantic-settings, SQLite.
 - **Documents:** pdfplumber, python-docx, spaCy `en_core_web_sm` for sentence splitting.
 - **Speech:** Kokoro-82M on CPU PyTorch 2.14.
@@ -210,5 +210,9 @@ scripts during development.
 - [gpt-oss-20b and gpt-oss-120b](https://huggingface.co/openai/gpt-oss-120b) by OpenAI
   (Apache 2.0), served by [Groq](https://groq.com/).
 - [spaCy](https://spacy.io/) `en_core_web_sm` (MIT) for sentence splitting.
+- [Geist](https://vercel.com/font) and [Newsreader](https://fonts.google.com/specimen/Newsreader)
+  (SIL Open Font License), self-hosted.
+- Landing photo by [Marek Piwnicki](https://unsplash.com/photos/misty-mountain-peaks-at-sunrise-with-soft-pastel-sky-A1IoRfRQHuk)
+  on Unsplash (Unsplash License).
 
 VoxDoc is released under the [MIT License](LICENSE).

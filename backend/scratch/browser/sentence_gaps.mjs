@@ -4,9 +4,9 @@
 //   cd <a folder with Playwright installed>   # npm i playwright (uses installed Edge)
 //   node <repo>\backend\scratch\browser\sentence_gaps.mjs
 //
-// Starts uvicorn on :8000 and Vite on :5173. Per run: empty audio cache, fresh browser
-// context, Play on sample.pdf, let 8 sentences play; gap = the 'playing' event of clip n+1
-// minus the 'ended' event of clip n.
+// Starts uvicorn on :8000 and Vite on :5173, so stop your own dev servers first.
+// Per run: empty audio cache, fresh browser context, Play on sample.pdf, let 8
+// sentences play; gap = the 'playing' event of clip n+1 minus the 'ended' event of clip n.
 import { createRequire } from 'node:module'
 import { spawn, execSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs'

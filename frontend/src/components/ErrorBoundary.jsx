@@ -1,5 +1,4 @@
 import { Component } from 'react'
-import { focusRing } from '../lib/styles'
 
 /**
  * Catches a crash while rendering a document, so a bug shows a message instead
@@ -21,15 +20,21 @@ export default class ErrorBoundary extends Component {
   render() {
     if (!this.state.crashed) return this.props.children
     return (
-      <div role="alert" className="mt-10">
-        <p className="text-error">Something went wrong while showing this document. Reload the page.</p>
-        <button
-          type="button"
-          onClick={() => window.location.reload()}
-          className={`mt-4 cursor-pointer rounded-md bg-pen px-4 py-2 font-bold text-paper hover:bg-ink ${focusRing}`}
-        >
-          Reload
-        </button>
+      <div className="vd-boundary">
+        <div className="vd-state" role="alert">
+          <h1 className="vd-state-title">Something went wrong</h1>
+          <p>Something went wrong while showing this document. Reload the page.</p>
+          <div className="vd-state-actions">
+            <button type="button" className="vd-btn vd-btn--dark" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+            {this.props.onHome && (
+              <button type="button" className="vd-btn vd-btn--outline" onClick={this.props.onHome}>
+                Back to home
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     )
   }
