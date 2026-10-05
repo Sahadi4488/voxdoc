@@ -108,7 +108,9 @@ You need Windows 10 or 11, [Git](https://git-scm.com/),
 
 Clone into a short path such as `C:\code`. Windows limits paths to 260 characters unless
 long paths are enabled, and installing torch in a deeply nested folder fails with
-"No such file or directory".
+"No such file or directory". Got the project as a zip instead? Extract it into a short
+path the same way (for example to `C:\code`, giving `C:\code\voxdoc`), skip the
+`git clone` line, and run the rest from `C:\code`.
 
 Backend, in a first PowerShell window:
 
@@ -212,7 +214,5 @@ scripts during development.
 - [spaCy](https://spacy.io/) `en_core_web_sm` (MIT) for sentence splitting.
 - [Geist](https://vercel.com/font) and [Newsreader](https://fonts.google.com/specimen/Newsreader)
   (SIL Open Font License), self-hosted.
-- Landing photo by [Marek Piwnicki](https://unsplash.com/photos/misty-mountain-peaks-at-sunrise-with-soft-pastel-sky-A1IoRfRQHuk)
-  on Unsplash (Unsplash License).
 
 VoxDoc is released under the [MIT License](LICENSE).

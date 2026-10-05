@@ -536,16 +536,6 @@ select {
   text-decoration: none;
   animation: vd-fade-in 1.2s var(--vd-ease) 800ms both;
 }
-.vd-photo-credit {
-  position: absolute;
-  right: var(--vd-s4);
-  bottom: var(--vd-s3);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
-}
-.vd-photo-credit a {
-  color: inherit;
-}
 
 /* ---------- Landing: sections ---------- */
 .vd-section {

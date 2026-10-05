@@ -2,8 +2,7 @@ import hero1280 from '../../assets/hero-1280.webp'
 import hero2560 from '../../assets/hero-2560.webp'
 import Icon from '../ui/Icon'
 
-// Photo: Marek Piwnicki on Unsplash (Unsplash License), Dolomites at sunrise.
-const PHOTO_PAGE = 'https://unsplash.com/photos/misty-mountain-peaks-at-sunrise-with-soft-pastel-sky-A1IoRfRQHuk'
+// Photo: Marek Piwnicki on Unsplash (Unsplash License: free to use, no credit required).
 
 export default function Hero({ onUploadClick }) {
   return (
@@ -39,12 +38,6 @@ export default function Hero({ onUploadClick }) {
       <a className="vd-scroll-cue" href="#features">
         Scroll <Icon name="arrowDown" size="sm" />
       </a>
-      <p className="vd-photo-credit">
-        Photo:{' '}
-        <a href={PHOTO_PAGE} target="_blank" rel="noreferrer">
-          Marek Piwnicki
-        </a>
-      </p>
     </header>
   )
 }
