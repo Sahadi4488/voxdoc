@@ -102,9 +102,21 @@ haven't been measured yet. Details and per-trial numbers: [docs/measurements.md]
 
 ## Run it locally
 
-You need Windows 10 or 11, [Git](https://git-scm.com/),
-[Node.js](https://nodejs.org/) 20.19 or newer, and [uv](https://docs.astral.sh/uv/)
-(`winget install astral-sh.uv`). uv downloads Python 3.11 if you don't have it.
+You need Windows 10 or 11, [Node.js](https://nodejs.org/) 20.19 or newer,
+[uv](https://docs.astral.sh/uv/), and [Git](https://git-scm.com/) if you clone rather than
+download a zip. uv downloads Python 3.11 if you don't have it. Install uv and Node once:
+
+```powershell
+winget install astral-sh.uv
+winget install OpenJS.NodeJS.LTS
+```
+
+Without winget, install uv with
+`powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"` and
+Node from its website. Then **close PowerShell and open a new window**: one that was open
+during the install doesn't see the new commands and reports "uv is not recognized".
+`uv --version` and `node --version` should both print a version. If you'd rather not use
+uv and already have Python 3.11, `py -3.11 -m venv .venv` replaces the `uv venv` line below.
 
 Clone into a short path such as `C:\code`. Windows limits paths to 260 characters unless
 long paths are enabled, and installing torch in a deeply nested folder fails with
